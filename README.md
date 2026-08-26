@@ -63,7 +63,11 @@
 ## 📸 Menu Interface & Dashboard
 
 <div align="center">
-  <img src="GhostMode_Dashboard.png" alt="Ghost Mode Menu Interface" width="340" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);" />
+  <p>
+    <img src="GhostMode_Inactive.png" alt="Ghost Mode - Normal Sleep State" width="310" style="border-radius: 12px; margin-right: 12px;" />
+    <img src="GhostMode_Active.png" alt="Ghost Mode - Active Session State" width="310" style="border-radius: 12px;" />
+  </p>
+  <p><i>Left: Normal Sleep (Inactive) &bull; Right: Active Keep-Awake Session with Live Progress</i></p>
 </div>
 
 ---

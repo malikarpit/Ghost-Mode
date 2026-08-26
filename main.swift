@@ -1110,7 +1110,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // 2. Extend submenu only makes sense while a session is running
         extendSubmenuItem.isHidden = !isSleepDisabled
 
-        // 3. Presets Submenu Checkmarks & (Default) Tags
+        // 3. Presets Submenu Title, Checkmarks & (Default) Tags
+        presetsSubmenuItem.title = isSleepDisabled ? "Switch Session to..." : "Start Session for..."
         let defSecs = Preferences.shared.defaultDuration
         var matchedPreset = false
 
@@ -1378,11 +1379,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func startCustomDurationClicked(_ sender: NSMenuItem) {
+        let isSleepDisabled = PowerManager.shared.checkLidSleepDisabled()
         let alert = NSAlert()
-        alert.messageText = "Start Custom Ghost Mode Session"
+        alert.messageText = isSleepDisabled ? "Switch Ghost Mode Session Duration" : "Start Custom Ghost Mode Session"
         alert.informativeText = "Enter duration (e.g., '90m' for 90 minutes, '2.5h' for 2.5 hours, or raw minutes):"
         alert.alertStyle = .informational
-        alert.addButton(withTitle: "Start Session")
+        alert.addButton(withTitle: isSleepDisabled ? "Switch Duration" : "Start Session")
         alert.addButton(withTitle: "Cancel")
 
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
