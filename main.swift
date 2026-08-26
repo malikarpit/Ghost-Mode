@@ -1173,12 +1173,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         loginItem.state = isLaunchAtLoginEnabled() ? .on : .off
 
         if sudoConfigured {
-            setupSudoItem.title = "Passwordless Sudo: Configured ✓"
-            setupSudoItem.isEnabled = false
+            setupSudoItem.title = "Revoke Passwordless Sudo..."
+            setupSudoItem.state = .on
         } else {
             setupSudoItem.title = "Setup Passwordless Sudo..."
-            setupSudoItem.isEnabled = true
+            setupSudoItem.state = .off
         }
+        setupSudoItem.isEnabled = true
 
         // 5. Menu Bar Icon & Text Badge
         if let button = statusItem.button {
@@ -1502,29 +1503,57 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func runSetup(_ sender: NSMenuItem) {
-        let alert = NSAlert()
-        alert.messageText = "Setup Passwordless Sudo for Ghost Mode"
-        alert.informativeText = "Ghost Mode will configure passwordless access for the pmset utility in /private/etc/sudoers.d/ghostmode.\n\nDeveloped by \(AppMetadata.author).\n\nProceed to authenticate with administrator password?"
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "Proceed")
-        alert.addButton(withTitle: "Cancel")
+        let isConfigured = PowerManager.shared.isPasswordlessSudoConfigured()
 
-        let response = alert.runModal()
-        if response == .alertFirstButtonReturn {
-            let bundlePath = Bundle.main.bundlePath
-            let scriptPath = "\(bundlePath)/Contents/Resources/ghostmode_setup.sh"
+        if isConfigured {
+            let alert = NSAlert()
+            alert.messageText = "Revoke Passwordless Sudo?"
+            alert.informativeText = "Ghost Mode will remove the sudoers authorization rule from /private/etc/sudoers.d/ghostmode.\n\nAfter revoking, macOS will prompt for your administrator password whenever Ghost Mode modifies sleep settings."
+            alert.alertStyle = .warning
+            alert.addButton(withTitle: "Revoke Authorization")
+            alert.addButton(withTitle: "Cancel")
 
-            let success = PowerManager.shared.runSudoCommandWithAppleScript(command: "\"\(scriptPath)\"")
-            if success && PowerManager.shared.isPasswordlessSudoConfigured() {
-                let successAlert = NSAlert()
-                successAlert.messageText = "Setup Successful"
-                successAlert.informativeText = "Passwordless access configured successfully! You can now toggle Ghost Mode instantly."
-                successAlert.alertStyle = .informational
-                successAlert.addButton(withTitle: "Awesome")
-                successAlert.runModal()
-                updateStatusUI()
-            } else {
-                showErrorAlert(title: "Setup Failed", message: "Failed to configure passwordless access. Please verify credentials or directory permissions.")
+            NSApp.activate(ignoringOtherApps: true)
+            if alert.runModal() == .alertFirstButtonReturn {
+                let success = PowerManager.shared.runSudoCommandWithAppleScript(command: "/bin/rm -f /private/etc/sudoers.d/ghostmode")
+                if success && !PowerManager.shared.isPasswordlessSudoConfigured() {
+                    let doneAlert = NSAlert()
+                    doneAlert.messageText = "Authorization Revoked"
+                    doneAlert.informativeText = "Passwordless sudo has been removed. You will now be prompted for password authentication when sleep settings change."
+                    doneAlert.alertStyle = .informational
+                    doneAlert.addButton(withTitle: "OK")
+                    doneAlert.runModal()
+                    updateStatusUI()
+                } else {
+                    showErrorAlert(title: "Revocation Failed", message: "Failed to remove /private/etc/sudoers.d/ghostmode. You can remove it manually via: sudo rm -f /private/etc/sudoers.d/ghostmode")
+                }
+            }
+        } else {
+            let alert = NSAlert()
+            alert.messageText = "Setup Passwordless Sudo for Ghost Mode"
+            alert.informativeText = "Ghost Mode will configure passwordless access for the pmset utility in /private/etc/sudoers.d/ghostmode.\n\nDeveloped by \(AppMetadata.author).\n\nProceed to authenticate with administrator password?"
+            alert.alertStyle = .informational
+            alert.addButton(withTitle: "Proceed")
+            alert.addButton(withTitle: "Cancel")
+
+            NSApp.activate(ignoringOtherApps: true)
+            let response = alert.runModal()
+            if response == .alertFirstButtonReturn {
+                let bundlePath = Bundle.main.bundlePath
+                let scriptPath = "\(bundlePath)/Contents/Resources/ghostmode_setup.sh"
+
+                let success = PowerManager.shared.runSudoCommandWithAppleScript(command: "\"\(scriptPath)\"")
+                if success && PowerManager.shared.isPasswordlessSudoConfigured() {
+                    let successAlert = NSAlert()
+                    successAlert.messageText = "Setup Successful"
+                    successAlert.informativeText = "Passwordless access configured successfully! You can now toggle Ghost Mode instantly without password prompts."
+                    successAlert.alertStyle = .informational
+                    successAlert.addButton(withTitle: "Awesome")
+                    successAlert.runModal()
+                    updateStatusUI()
+                } else {
+                    showErrorAlert(title: "Setup Failed", message: "Failed to configure passwordless access. Please verify credentials or directory permissions.")
+                }
             }
         }
     }
