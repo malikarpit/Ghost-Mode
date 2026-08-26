@@ -91,6 +91,7 @@ class Preferences {
         static let appFreezeOnLidCloseEnabled = "appFreezeOnLidCloseEnabled"
         static let appFreezeWhitelist = "appFreezeWhitelist"
         static let keepAudioActiveOnLidClose = "keepAudioActiveOnLidClose"
+        static let audioAppWhitelist = "audioAppWhitelist"
     }
 
     var defaultDuration: Int {
@@ -186,6 +187,16 @@ class Preferences {
         }
         set { defaults.set(newValue, forKey: Keys.appFreezeWhitelist) }
     }
+
+    var audioAppWhitelist: [String] {
+        get {
+            if let arr = defaults.stringArray(forKey: Keys.audioAppWhitelist) {
+                return arr
+            }
+            return [] // If empty, all dynamically detected active audio streams are permitted
+        }
+        set { defaults.set(newValue, forKey: Keys.audioAppWhitelist) }
+    }
 }
 
 // MARK: - Process Diagnostics (Mach Kernel, < 1 Microsecond, 0 Subprocesses)
@@ -254,30 +265,35 @@ class AppFreezer {
         "com.google.antigravity-ide"
     ]
 
-    // Universal Audio & Media Player Signatures (Browsers, Music, Podcasts, Video, Calls)
-    private let universalMediaIdentifiers: Set<String> = [
-        "com.apple.Safari",
-        "com.google.Chrome",
-        "com.apple.Music",
-        "com.apple.podcasts",
-        "com.apple.QuickTimePlayerX",
-        "com.spotify.client",
-        "org.videolan.vlc",
-        "com.colliderli.iina",
-        "com.brave.Browser",
-        "company.thebrowser.Browser", // Arc Browser
-        "org.mozilla.firefox",
-        "com.microsoft.edgemac",
-        "com.operasoftware.Opera",
-        "com.tidal.desktop",
-        "com.amazon.music",
-        "com.deezer.Deezer",
-        "com.soundcloud.desktop",
-        "com.hnc.Discord",
-        "discordapp.com",
-        "us.zoom.xos",
-        "com.tinyspeck.slackmacgap"
-    ]
+    // MARK: - Dynamic Kernel Audio Detection (0 Hardcoded Names, 100% Device-Agnostic)
+    func getActiveAudioPids() -> Set<pid_t> {
+        var audioPids = Set<pid_t>()
+        var assertionsRef: Unmanaged<CFDictionary>?
+        if IOPMCopyAssertionsByProcess(&assertionsRef) == kIOReturnSuccess,
+           let dict = assertionsRef?.takeRetainedValue() as? [NSNumber: NSArray] {
+            for (pidNum, arr) in dict {
+                for item in arr {
+                    guard let assertion = item as? [String: Any] else { continue }
+                    let name = (assertion["AssertName"] as? String) ?? ""
+                    let onBehalf = (assertion["AssertionOnBehalfOfPID"] as? NSNumber)?.int32Value ?? (assertion["AssertionOnBehalfOfPID"] as? Int32) ?? 0
+
+                    if name.localizedCaseInsensitiveContains("audio") ||
+                       name.localizedCaseInsensitiveContains("media") ||
+                       name.localizedCaseInsensitiveContains("speaker") ||
+                       name.localizedCaseInsensitiveContains("headphone") ||
+                       name.localizedCaseInsensitiveContains("airpods") ||
+                       name.localizedCaseInsensitiveContains("bluetooth") {
+                        if onBehalf > 0 {
+                            audioPids.insert(onBehalf)
+                        } else {
+                            audioPids.insert(pidNum.int32Value)
+                        }
+                    }
+                }
+            }
+        }
+        return audioPids
+    }
 
     func freezeNonWhitelistedApps() -> Int {
         guard Preferences.shared.appFreezeOnLidCloseEnabled else { return 0 }
@@ -285,11 +301,12 @@ class AppFreezer {
 
         let currentPid = getpid()
         let whitelist = Set(Preferences.shared.appFreezeWhitelist)
+        let audioWhitelist = Set(Preferences.shared.audioAppWhitelist)
         let keepAudio = Preferences.shared.keepAudioActiveOnLidClose
+        let activeAudioPids = getActiveAudioPids()
         let runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
 
         var count = 0
-        var frozenMediaHelpers: [String] = []
 
         for app in runningApps {
             let pid = app.processIdentifier
@@ -298,31 +315,24 @@ class AppFreezer {
             let bid = app.bundleIdentifier ?? ""
             let name = app.localizedName ?? ""
 
-            // Safeguard: Never touch critical system services, bluetooth, wifi, or IDE
+            // Safeguard 1: Permanent system immunity
             if systemProtectedIdentifiers.contains(bid) || whitelist.contains(bid) || whitelist.contains(name) {
                 continue
             }
 
-            // Universal Audio Detection (Browsers, Media Players, Calls)
-            let isMedia = universalMediaIdentifiers.contains(bid) ||
-                          name.localizedCaseInsensitiveContains("music") ||
-                          name.localizedCaseInsensitiveContains("audio") ||
-                          name.localizedCaseInsensitiveContains("player") ||
-                          name.localizedCaseInsensitiveContains("podcast") ||
-                          name.localizedCaseInsensitiveContains("spotify") ||
-                          name.localizedCaseInsensitiveContains("safari") ||
-                          name.localizedCaseInsensitiveContains("chrome")
+            // Safeguard 2: Dynamic Audio Detection & User Choice
+            let isProducingAudio = activeAudioPids.contains(pid) || isHelperOfAppProducingAudio(app: app, activePids: activeAudioPids)
+            let isAllowedAudio = audioWhitelist.isEmpty || audioWhitelist.contains(bid) || audioWhitelist.contains(name)
 
-            if keepAudio && isMedia {
+            if keepAudio && isProducingAudio && isAllowedAudio {
                 // Audio Keep-Alive Mode:
-                // Suspend the main UI window process to stop display rendering & GPU compositing,
+                // Suspend the main GUI window to stop 60fps screen rendering & GPU compositing,
                 // while leaving audio decoding daemons and CoreAudio completely active.
                 if kill(pid, SIGSTOP) == 0 {
                     frozenPids.insert(pid)
                     count += 1
-                    print("AppFreezer: Suspended UI for '\(name)' (PID: \(pid)) in RAM (Audio kept streaming).")
+                    print("AppFreezer: Suspended UI for '\(name)' (PID: \(pid)) in RAM (Active audio stream kept playing).")
                 }
-                // Do NOT freeze WebKit.GPU, CoreAudio, or audio renderers so music keeps playing!
                 continue
             }
 
@@ -331,20 +341,18 @@ class AppFreezer {
                 frozenPids.insert(pid)
                 count += 1
                 print("AppFreezer: Suspended '\(name)' (PID: \(pid)) in RAM.")
-
-                if isMedia {
-                    frozenMediaHelpers.append(name)
-                }
             }
         }
 
-        // If audio keep-alive is OFF and media apps were frozen, also halt child audio decoders
-        if !keepAudio && !frozenMediaHelpers.isEmpty {
-            let mediaHelpers = getPidsMatching(patterns: ["com.apple.WebKit.WebContent", "com.apple.WebKit.GPU", "com.apple.WebKit.Networking", "Google Chrome Helper", "Spotify Helper", "VLC"])
-            for hPid in mediaHelpers {
-                if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
-                    if kill(hPid, SIGSTOP) == 0 {
-                        frozenPids.insert(hPid)
+        // If audio keep-alive is OFF, also suspend background audio decoder helper PIDs
+        if !keepAudio {
+            for aPid in activeAudioPids {
+                if aPid > 100 && aPid != currentPid && !frozenPids.contains(aPid) {
+                    let execPath = getExecutablePath(of: aPid)
+                    if !systemProtectedIdentifiers.contains(execPath) {
+                        if kill(aPid, SIGSTOP) == 0 {
+                            frozenPids.insert(aPid)
+                        }
                     }
                 }
             }
@@ -353,31 +361,25 @@ class AppFreezer {
         return count
     }
 
-    private func getPidsMatching(patterns: [String]) -> [pid_t] {
-        let numPids = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
-        guard numPids > 0 else { return [] }
-        var pids = [pid_t](repeating: 0, count: Int(numPids) / MemoryLayout<pid_t>.size)
-        let bytesUsed = proc_listpids(UInt32(PROC_ALL_PIDS), 0, &pids, numPids)
-        let actualCount = Int(bytesUsed) / MemoryLayout<pid_t>.size
-
-        var matches: [pid_t] = []
-        var pathBuffer = [CChar](repeating: 0, count: 4096)
-
-        for i in 0..<actualCount {
-            let pid = pids[i]
-            guard pid > 100 else { continue }
-            let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
-            if pathLength > 0 {
-                let path = String(cString: pathBuffer)
-                for pattern in patterns {
-                    if path.localizedCaseInsensitiveContains(pattern) {
-                        matches.append(pid)
-                        break
-                    }
-                }
+    private func isHelperOfAppProducingAudio(app: NSRunningApplication, activePids: Set<pid_t>) -> Bool {
+        guard let name = app.localizedName, !name.isEmpty else { return false }
+        for aPid in activePids {
+            let path = getExecutablePath(of: aPid)
+            if path.localizedCaseInsensitiveContains(name) ||
+               (app.bundleIdentifier != nil && path.localizedCaseInsensitiveContains(app.bundleIdentifier!)) {
+                return true
             }
         }
-        return matches
+        return false
+    }
+
+    private func getExecutablePath(of pid: pid_t) -> String {
+        var pathBuffer = [CChar](repeating: 0, count: 4096)
+        let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+        if pathLength > 0 {
+            return String(cString: pathBuffer)
+        }
+        return ""
     }
 
     func unfreezeAllApps() {
@@ -914,6 +916,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     var appFreezeItem: NSMenuItem!
     var keepAudioItem: NSMenuItem!
+    var audioWhitelistItem: NSMenuItem!
+    var audioWhitelistSubmenu = NSMenu()
     var appFreezeWhitelistItem: NSMenuItem!
     var appFreezeWhitelistSubmenu = NSMenu()
 
@@ -1382,6 +1386,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         keepAudioItem.target = self
         safetySubmenu.addItem(keepAudioItem)
 
+        audioWhitelistSubmenu = NSMenu()
+        audioWhitelistSubmenu.autoenablesItems = false
+        audioWhitelistItem = NSMenuItem(title: "Select Allowed Audio Apps...", action: nil, keyEquivalent: "")
+        audioWhitelistItem.submenu = audioWhitelistSubmenu
+        safetySubmenu.addItem(audioWhitelistItem)
+
         appFreezeWhitelistSubmenu = NSMenu()
         appFreezeWhitelistSubmenu.autoenablesItems = false
         appFreezeWhitelistItem = NSMenuItem(title: "Keep Specific Apps Running...", action: nil, keyEquivalent: "")
@@ -1468,6 +1478,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         isMenuOpen = true
         lastLidClosedState = DisplayManager.shared.isLidClosed()
         refreshAppFreezeWhitelistSubmenu()
+        refreshAudioWhitelistSubmenu()
         updateStatusUI()
 
         // If an active timed session is in progress, update progress smoothly while the dropdown is open
@@ -1517,6 +1528,49 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 item.image = smallIcon
             }
             appFreezeWhitelistSubmenu.addItem(item)
+        }
+    }
+
+    func refreshAudioWhitelistSubmenu() {
+        audioWhitelistSubmenu.removeAllItems()
+        let currentPid = getpid()
+        let runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.processIdentifier != currentPid && $0.bundleIdentifier != "com.apple.finder" }
+            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+
+        let audioWhitelist = Set(Preferences.shared.audioAppWhitelist)
+        let activeAudioPids = AppFreezer.shared.getActiveAudioPids()
+
+        if runningApps.isEmpty {
+            let emptyItem = NSMenuItem(title: "No open user apps", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            audioWhitelistSubmenu.addItem(emptyItem)
+            return
+        }
+
+        let descItem = NSMenuItem(title: "Allowed audio apps when lid closed:", action: nil, keyEquivalent: "")
+        descItem.isEnabled = false
+        audioWhitelistSubmenu.addItem(descItem)
+        audioWhitelistSubmenu.addItem(NSMenuItem.separator())
+
+        for app in runningApps {
+            guard let name = app.localizedName, !name.isEmpty else { continue }
+            let identifier = app.bundleIdentifier ?? name
+            let isAllowed = audioWhitelist.isEmpty || audioWhitelist.contains(identifier) || audioWhitelist.contains(name)
+
+            let isActivelyPlaying = activeAudioPids.contains(app.processIdentifier)
+            let title = isActivelyPlaying ? "\(name) (Playing Sound 🔊)" : name
+
+            let item = NSMenuItem(title: title, action: #selector(toggleAudioAppInWhitelist(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = identifier
+            item.state = isAllowed ? .on : .off
+            if let icon = app.icon {
+                let smallIcon = icon.copy() as! NSImage
+                smallIcon.size = NSSize(width: 16, height: 16)
+                item.image = smallIcon
+            }
+            audioWhitelistSubmenu.addItem(item)
         }
     }
 
@@ -1713,6 +1767,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         appFreezeItem.isHidden = !hasLid
         keepAudioItem.state = Preferences.shared.keepAudioActiveOnLidClose ? .on : .off
         keepAudioItem.isHidden = !hasLid
+        audioWhitelistItem.isHidden = !hasLid
+        audioWhitelistItem.isEnabled = Preferences.shared.keepAudioActiveOnLidClose
         appFreezeWhitelistItem.isHidden = !hasLid
 
         let defHuman = formatDurationHuman(Preferences.shared.defaultDuration)
@@ -2049,6 +2105,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         Preferences.shared.appFreezeWhitelist = list
         refreshAppFreezeWhitelistSubmenu()
+        updateStatusUI()
+    }
+
+    @objc func toggleAudioAppInWhitelist(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        var list = Preferences.shared.audioAppWhitelist
+        let runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+
+        // If list was empty (default: all allowed), initialize it with all running apps except the toggled one
+        if list.isEmpty {
+            for app in runningApps {
+                let appKey = app.bundleIdentifier ?? app.localizedName ?? ""
+                if !appKey.isEmpty && appKey != id {
+                    list.append(appKey)
+                }
+            }
+        } else {
+            if let idx = list.firstIndex(of: id) {
+                list.remove(at: idx)
+            } else {
+                list.append(id)
+            }
+        }
+        Preferences.shared.audioAppWhitelist = list
+        refreshAudioWhitelistSubmenu()
         updateStatusUI()
     }
 
