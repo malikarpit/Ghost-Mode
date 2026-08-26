@@ -1,0 +1,29 @@
+# Xcode / Swift Build Artifacts
+*.app/
+*.dmg
+*.dSYM/
+*.o
+*.swiftdoc
+*.swiftmodule
+*.abi.json
+dist/
+/tmp/ghostmode_build/
+
+# Temporary / Backup files
+*.bak*
+*.tmp
+*.orig
+*~
+
+# macOS System Files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# IDE / Editor folders
+.vscode/
+.idea/
+.agents/
