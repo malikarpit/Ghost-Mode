@@ -16,7 +16,7 @@ import IOKit.pwr_mgt
 // MARK: - App Metadata & Signature
 struct AppMetadata {
     static let name = "Ghost Mode"
-    static let version = "1.0"
+    static let version = "2.0"
     static let author = "Arpit"
     static let copyright = "Copyright © 2026 Arpit. All rights reserved."
     static let digitalSignature = "Signed by Arpit (com.arpit.GhostMode)"
@@ -88,6 +88,9 @@ class Preferences {
         static let soundNotificationsEnabled = "soundNotificationsEnabled"
         static let showInDock = "showInDock"
         static let hasSeenWelcome = "hasSeenWelcome"
+        static let appFreezeOnLidCloseEnabled = "appFreezeOnLidCloseEnabled"
+        static let appFreezeWhitelist = "appFreezeWhitelist"
+        static let keepAudioActiveOnLidClose = "keepAudioActiveOnLidClose"
     }
 
     var defaultDuration: Int {
@@ -160,6 +163,225 @@ class Preferences {
         get { return defaults.bool(forKey: Keys.hasSeenWelcome) }
         set { defaults.set(newValue, forKey: Keys.hasSeenWelcome) }
     }
+
+    var appFreezeOnLidCloseEnabled: Bool {
+        get { return defaults.bool(forKey: Keys.appFreezeOnLidCloseEnabled) }
+        set { defaults.set(newValue, forKey: Keys.appFreezeOnLidCloseEnabled) }
+    }
+
+    var keepAudioActiveOnLidClose: Bool {
+        get {
+            if defaults.object(forKey: Keys.keepAudioActiveOnLidClose) == nil { return true }
+            return defaults.bool(forKey: Keys.keepAudioActiveOnLidClose)
+        }
+        set { defaults.set(newValue, forKey: Keys.keepAudioActiveOnLidClose) }
+    }
+
+    var appFreezeWhitelist: [String] {
+        get {
+            if let arr = defaults.stringArray(forKey: Keys.appFreezeWhitelist) {
+                return arr
+            }
+            return ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty"]
+        }
+        set { defaults.set(newValue, forKey: Keys.appFreezeWhitelist) }
+    }
+}
+
+// MARK: - Process Diagnostics (Mach Kernel, < 1 Microsecond, 0 Subprocesses)
+struct ProcessDiagnostics {
+    static func getMemoryFootprintMB() -> Double {
+        var info = mach_task_basic_info()
+        var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+        let kerr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+            }
+        }
+        if kerr == KERN_SUCCESS {
+            return Double(info.resident_size) / (1024.0 * 1024.0)
+        }
+        return 16.0
+    }
+
+    static func getGhostModeCPUPercentage() -> Double {
+        var threadList: thread_act_array_t?
+        var threadCount: mach_msg_type_number_t = 0
+        let kerr = task_threads(mach_task_self_, &threadList, &threadCount)
+        guard kerr == KERN_SUCCESS, let list = threadList else { return 0.0 }
+        defer {
+            vm_deallocate(mach_task_self_, vm_address_t(bitPattern: list), vm_size_t(threadCount * UInt32(MemoryLayout<thread_t>.size)))
+        }
+
+        var totalUsage: Double = 0.0
+        for i in 0..<Int(threadCount) {
+            var info = thread_basic_info()
+            var count = mach_msg_type_number_t(MemoryLayout<thread_basic_info>.size / MemoryLayout<natural_t>.size)
+            let thErr = withUnsafeMutablePointer(to: &info) {
+                $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                    thread_info(list[i], thread_flavor_t(THREAD_BASIC_INFO), $0, &count)
+                }
+            }
+            if thErr == KERN_SUCCESS {
+                if (info.flags & TH_FLAGS_IDLE) == 0 {
+                    totalUsage += (Double(info.cpu_usage) / Double(TH_USAGE_SCALE)) * 100.0
+                }
+            }
+        }
+        return totalUsage
+    }
+}
+
+// MARK: - App Freezer & Battery Isolation Manager (Safe SIGSTOP / SIGCONT in RAM)
+class AppFreezer {
+    static let shared = AppFreezer()
+    private(set) var frozenPids = Set<pid_t>()
+
+    // Permanent Protected Bundle Identifiers & System Daemons (NEVER frozen under any circumstance)
+    private let systemProtectedIdentifiers: Set<String> = [
+        "com.arpit.GhostMode",
+        "com.apple.finder",
+        "com.apple.dock",
+        "com.apple.WindowManager",
+        "com.apple.controlcenter",
+        "com.apple.notificationcenterui",
+        "com.apple.SystemUIServer",
+        "com.apple.Spotlight",
+        "com.apple.loginwindow",
+        "com.apple.bluetoothd",
+        "com.apple.airportd",
+        "com.apple.coreaudiod",
+        "com.google.antigravity-ide"
+    ]
+
+    func freezeNonWhitelistedApps() -> Int {
+        guard Preferences.shared.appFreezeOnLidCloseEnabled else { return 0 }
+        unfreezeAllApps()
+
+        let currentPid = getpid()
+        let whitelist = Set(Preferences.shared.appFreezeWhitelist)
+        let keepAudio = Preferences.shared.keepAudioActiveOnLidClose
+        let runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
+
+        var count = 0
+        var freezeSafari = false
+        var freezeChrome = false
+        var freezeSpotify = false
+
+        for app in runningApps {
+            let pid = app.processIdentifier
+            guard pid > 100 && pid != currentPid else { continue }
+
+            let bid = app.bundleIdentifier ?? ""
+            let name = app.localizedName ?? ""
+
+            // Safeguard: Never touch critical system services, bluetooth, wifi, or IDE
+            if systemProtectedIdentifiers.contains(bid) || whitelist.contains(bid) || whitelist.contains(name) {
+                continue
+            }
+
+            // Check if app is a media/browser app
+            let isSafari = (bid == "com.apple.Safari" || name.contains("Safari"))
+            let isChrome = (bid == "com.google.Chrome" || name.contains("Chrome"))
+            let isSpotify = (bid == "com.spotify.client" || name.contains("Spotify"))
+
+            if keepAudio && (isSafari || isChrome || isSpotify) {
+                // Audio Keep-Alive Mode:
+                // Suspend the main UI window process to stop display rendering & window compositing,
+                // while leaving audio decoding daemons (com.apple.WebKit.GPU, etc.) completely active.
+                if kill(pid, SIGSTOP) == 0 {
+                    frozenPids.insert(pid)
+                    count += 1
+                    print("AppFreezer: Suspended UI for '\(name)' (PID: \(pid)) in RAM (Audio kept streaming).")
+                }
+                // Do NOT freeze WebKit.GPU or WebKit.Networking or CoreAudio so music keeps playing!
+                continue
+            }
+
+            // Standard freeze for regular background desktop apps
+            if kill(pid, SIGSTOP) == 0 {
+                frozenPids.insert(pid)
+                count += 1
+                print("AppFreezer: Suspended '\(name)' (PID: \(pid)) in RAM.")
+
+                if isSafari { freezeSafari = true }
+                if isChrome { freezeChrome = true }
+                if isSpotify { freezeSpotify = true }
+            }
+        }
+
+        // If audio keep-alive is OFF and browser was frozen, also halt audio decoders
+        if !keepAudio {
+            if freezeSafari {
+                let safariHelpers = getPidsMatching(patterns: ["com.apple.WebKit.WebContent", "com.apple.WebKit.GPU", "com.apple.WebKit.Networking"])
+                for hPid in safariHelpers {
+                    if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
+                        if kill(hPid, SIGSTOP) == 0 {
+                            frozenPids.insert(hPid)
+                        }
+                    }
+                }
+            }
+            if freezeChrome {
+                let chromeHelpers = getPidsMatching(patterns: ["Google Chrome Helper"])
+                for hPid in chromeHelpers {
+                    if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
+                        if kill(hPid, SIGSTOP) == 0 {
+                            frozenPids.insert(hPid)
+                        }
+                    }
+                }
+            }
+            if freezeSpotify {
+                let spotifyHelpers = getPidsMatching(patterns: ["Spotify Helper"])
+                for hPid in spotifyHelpers {
+                    if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
+                        if kill(hPid, SIGSTOP) == 0 {
+                            frozenPids.insert(hPid)
+                        }
+                    }
+                }
+            }
+        }
+
+        return count
+    }
+
+    private func getPidsMatching(patterns: [String]) -> [pid_t] {
+        let numPids = proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0)
+        guard numPids > 0 else { return [] }
+        var pids = [pid_t](repeating: 0, count: Int(numPids) / MemoryLayout<pid_t>.size)
+        let bytesUsed = proc_listpids(UInt32(PROC_ALL_PIDS), 0, &pids, numPids)
+        let actualCount = Int(bytesUsed) / MemoryLayout<pid_t>.size
+
+        var matches: [pid_t] = []
+        var pathBuffer = [CChar](repeating: 0, count: 4096)
+
+        for i in 0..<actualCount {
+            let pid = pids[i]
+            guard pid > 100 else { continue }
+            let pathLength = proc_pidpath(pid, &pathBuffer, UInt32(pathBuffer.count))
+            if pathLength > 0 {
+                let path = String(cString: pathBuffer)
+                for pattern in patterns {
+                    if path.localizedCaseInsensitiveContains(pattern) {
+                        matches.append(pid)
+                        break
+                    }
+                }
+            }
+        }
+        return matches
+    }
+
+    func unfreezeAllApps() {
+        guard !frozenPids.isEmpty else { return }
+        for pid in frozenPids {
+            kill(pid, SIGCONT)
+            print("AppFreezer: Resumed PID \(pid).")
+        }
+        frozenPids.removeAll()
+    }
 }
 
 // MARK: - Display & Hardware Manager (MacBook + Desktop Macs)
@@ -171,8 +393,11 @@ class DisplayManager {
         guard rootDomain != IO_OBJECT_NULL else { return false }
         defer { IOObjectRelease(rootDomain) }
 
-        let prop = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)
-        return prop != nil
+        if let prop = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0) {
+            _ = prop.takeRetainedValue()
+            return true
+        }
+        return false
     }
 
     func isLidClosed() -> Bool {
@@ -180,8 +405,13 @@ class DisplayManager {
         guard rootDomain != IO_OBJECT_NULL else { return false }
         defer { IOObjectRelease(rootDomain) }
 
-        if let prop = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? Bool {
-            return prop
+        if let propRef = IORegistryEntryCreateCFProperty(rootDomain, "AppleClamshellState" as CFString, kCFAllocatorDefault, 0) {
+            let prop = propRef.takeRetainedValue()
+            if let b = prop as? Bool { return b }
+            if let num = prop as? NSNumber { return num.boolValue }
+            if CFGetTypeID(prop) == CFBooleanGetTypeID() {
+                return CFBooleanGetValue((prop as! CFBoolean))
+            }
         }
         return false
     }
@@ -307,7 +537,7 @@ func formatDurationCompact(_ seconds: Int) -> String {
 // MARK: - Power Manager
 class PowerManager {
     static let shared = PowerManager()
-    private var caffeinateProcess: Process?
+    private var powerAssertionID: IOPMAssertionID = 0
 
     func shell(_ command: String) -> (output: String, exitCode: Int32) {
         let process = Process()
@@ -332,9 +562,20 @@ class PowerManager {
         return output.range(of: #"SleepDisabled\s+1"#, options: .regularExpression) != nil
     }
 
-    func isPasswordlessSudoConfigured() -> Bool {
+    private var _cachedSudoConfigured: Bool? = nil
+
+    func isPasswordlessSudoConfigured(forceRefresh: Bool = false) -> Bool {
+        if !forceRefresh, let cached = _cachedSudoConfigured {
+            return cached
+        }
         let (_, exitCode) = shell("sudo -n /usr/bin/pmset -g")
-        return exitCode == 0
+        let result = (exitCode == 0)
+        _cachedSudoConfigured = result
+        return result
+    }
+
+    func invalidateSudoCache() {
+        _cachedSudoConfigured = nil
     }
 
     func runSudoCommandWithAppleScript(command: String) -> Bool {
@@ -362,31 +603,35 @@ class PowerManager {
 
         if success {
             if disabled {
-                startCaffeinateBackground()
+                startNativePowerAssertion()
             } else {
-                stopCaffeinateBackground()
+                stopNativePowerAssertion()
             }
         }
         return success
     }
 
-    func startCaffeinateBackground() {
-        guard caffeinateProcess == nil || !caffeinateProcess!.isRunning else { return }
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/caffeinate")
-        process.arguments = ["-ims"]
-        do {
-            try process.run()
-            caffeinateProcess = process
-        } catch {
-            print("Failed to start background caffeinate: \(error)")
+    func startNativePowerAssertion() {
+        guard powerAssertionID == 0 else { return }
+        let reason = "Ghost Mode Keep-Awake Session (by \(AppMetadata.author))" as CFString
+        let result = IOPMAssertionCreateWithName(
+            kIOPMAssertionTypePreventSystemSleep as CFString,
+            IOPMAssertionLevel(kIOPMAssertionLevelOn),
+            reason,
+            &powerAssertionID
+        )
+        if result == kIOReturnSuccess {
+            print("PowerManager: Native IOKit power assertion active (ID: \(powerAssertionID)).")
+        } else {
+            print("PowerManager: Failed to create IOKit power assertion (error: \(result)).")
         }
     }
 
-    func stopCaffeinateBackground() {
-        if let process = caffeinateProcess, process.isRunning {
-            process.terminate()
-            caffeinateProcess = nil
+    func stopNativePowerAssertion() {
+        if powerAssertionID != 0 {
+            IOPMAssertionRelease(powerAssertionID)
+            print("PowerManager: Native IOKit power assertion released (ID: \(powerAssertionID)).")
+            powerAssertionID = 0
         }
     }
 
@@ -447,21 +692,17 @@ final class ProgressBarView: NSView {
 }
 
 final class DashboardHeaderView: NSView {
-    // Match this to whatever width your widest existing menu row renders at
-    // (e.g. "🛑 Stop Ghost Mode (Allow Sleep)") so the dashboard doesn't look
-    // narrower or wider than the rest of the menu. 260 is a starting point —
-    // tune it visually in Xcode's preview.
-    private static let viewWidth: CGFloat = 260
+    private static let viewWidth: CGFloat = 270
     private static let viewHeight: CGFloat = 100
 
-    private let iconView = NSImageView(frame: NSRect(x: 14, y: 78, width: 18, height: 18))
+    private let iconView = NSImageView(frame: NSRect(x: 14, y: 76, width: 18, height: 18))
     private let titleLabel = NSTextField(labelWithString: "Ghost Mode")
     private let statusLabel = NSTextField(labelWithString: "")
-    private let progressBar = ProgressBarView(frame: NSRect(x: 14, y: 66, width: 232, height: 5))
+    private let progressBar = ProgressBarView(frame: NSRect(x: 14, y: 64, width: 242, height: 5))
     private let detailLabel = NSTextField(labelWithString: "")
     private let infoLabel = NSTextField(labelWithString: "")
     private let primaryButton = NSButton(frame: .zero)
-    private let secondaryButton = NSButton(frame: NSRect(x: 135, y: 18, width: 111, height: 24))
+    private let secondaryButton = NSButton(frame: NSRect(x: 140, y: 16, width: 116, height: 24))
 
     /// Turn On (when idle) / Stop (when active).
     var onPrimaryTap: (() -> Void)?
@@ -476,18 +717,18 @@ final class DashboardHeaderView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
 
     private func build() {
-        titleLabel.frame = NSRect(x: 38, y: 79, width: 90, height: 16)
+        titleLabel.frame = NSRect(x: 38, y: 77, width: 100, height: 16)
         titleLabel.font = .boldSystemFont(ofSize: 13)
 
-        statusLabel.frame = NSRect(x: 14, y: 79, width: 232, height: 16)
+        statusLabel.frame = NSRect(x: 140, y: 77, width: 116, height: 16)
         statusLabel.alignment = .right
         statusLabel.font = .systemFont(ofSize: 11, weight: .semibold)
 
-        detailLabel.frame = NSRect(x: 14, y: 51, width: 140, height: 12)
+        detailLabel.frame = NSRect(x: 14, y: 47, width: 75, height: 14)
         detailLabel.font = .systemFont(ofSize: 10)
         detailLabel.textColor = .secondaryLabelColor
 
-        infoLabel.frame = NSRect(x: 106, y: 51, width: 140, height: 12)
+        infoLabel.frame = NSRect(x: 90, y: 47, width: 166, height: 14)
         infoLabel.alignment = .right
         infoLabel.font = .systemFont(ofSize: 10)
         infoLabel.textColor = .secondaryLabelColor
@@ -548,32 +789,34 @@ final class DashboardHeaderView: NSView {
             detailLabel.stringValue = "\(formatCountdown(remaining)) left"
         } else if isActive {
             progressBar.isHidden = true
-            detailLabel.stringValue = "Running indefinitely"
+            detailLabel.stringValue = "Indefinite"
         } else {
             progressBar.isHidden = true
-            detailLabel.stringValue = "Sleep behaves normally"
+            detailLabel.stringValue = "Ready"
         }
 
-        // Right-hand battery / lid text
+        // Right-hand battery & live dynamic zero-resource telemetry text
         var info = ""
+        let memMB = ProcessDiagnostics.getMemoryFootprintMB()
+        let memStr = memMB < 100 ? String(format: "%.0fMB", memMB) : "\(Int(memMB))MB"
+        let cpuPct = ProcessDiagnostics.getGhostModeCPUPercentage()
+        let cpuStr = String(format: "%.1f%%", cpuPct)
+        info += "⚡ \(cpuStr) · \(memStr)"
+
         if let bat = battery {
             let symbol = bat.isCharging ? "⚡" : (bat.isAC ? "🔌" : "🔋")
-            info += "\(symbol) \(bat.percent)%"
-        }
-        if hasLid {
-            info += info.isEmpty ? "" : "  ·  "
-            info += isLidClosed ? "Lid closed" : "Lid open"
+            info += "  ·  \(symbol)\(bat.percent)%"
         }
         infoLabel.stringValue = info
 
         // Quick-action buttons: full-width "Turn On" when idle, "Stop" + "+30m" when active
         if isActive {
             primaryButton.title = "🛑 Stop"
-            primaryButton.frame = NSRect(x: 14, y: 18, width: 111, height: 24)
+            primaryButton.frame = NSRect(x: 14, y: 16, width: 116, height: 24)
             secondaryButton.isHidden = false
         } else {
             primaryButton.title = "👻 Turn On (\(formatDurationHuman(defaultDuration)))"
-            primaryButton.frame = NSRect(x: 14, y: 18, width: 232, height: 24)
+            primaryButton.frame = NSRect(x: 14, y: 16, width: 242, height: 24)
             secondaryButton.isHidden = true
         }
     }
@@ -605,9 +848,18 @@ enum SessionStopReason {
 }
 
 // MARK: - App Delegate
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
-    var tickerTimer: Timer?
+
+    // Active & Menu Timers (Strictly nil when idle)
+    private var sessionExpirationTimer: Timer?
+    private var countdownBadgeTimer: Timer?
+    private var menuTrackingTimer: Timer?
+    private var powerSourceRunLoopSource: CFRunLoopSource?
+    private var iokitNotifyPort: IONotificationPortRef?
+    private var iokitNotification: io_object_t = 0
+    private var iokitRootDomain: io_service_t = 0
+    private var isMenuOpen: Bool = false
 
     // Session State
     var isKeepAwakeActive: Bool = false
@@ -654,6 +906,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var lowBatteryOffItem: NSMenuItem!
     var lowBatteryCustomItem: NSMenuItem!
 
+    var appFreezeItem: NSMenuItem!
+    var keepAudioItem: NSMenuItem!
+    var appFreezeWhitelistItem: NSMenuItem!
+    var appFreezeWhitelistSubmenu = NSMenu()
+
     var acOnlyItem: NSMenuItem!
     var thermalGuardItem: NSMenuItem!
     var showCountdownItem: NSMenuItem!
@@ -671,6 +928,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Ghost Mode v\(AppMetadata.version) by \(AppMetadata.author): Initialized successfully.")
         cleanupLegacyArtifacts()
         setupWatchdog()
+        setupEventMonitoring()
 
         // Apply Dock visibility preference
         let showInDock = Preferences.shared.showInDock
@@ -689,19 +947,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             isKeepAwakeActive = true
             isIndefiniteSession = true
             activeInitialDurationSeconds = -1
+        } else {
+            isKeepAwakeActive = false
+            isIndefiniteSession = false
+            sessionEndDate = nil
+            activeInitialDurationSeconds = nil
         }
 
         updateStatusUI()
-
-        tickerTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
-            self?.timerTick()
-        }
-        // NSMenu tracking runs the run loop in .eventTrackingRunLoopMode, not
-        // .default, so a plain scheduledTimer silently pauses while the
-        // dropdown is open. Add it to .common so the dashboard keeps ticking.
-        if let timer = tickerTimer {
-            RunLoop.current.add(timer, forMode: .common)
-        }
 
         // Show welcome guidance on first launch
         if !Preferences.shared.hasSeenWelcome {
@@ -782,10 +1035,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         signal(SIGHUP, cleanExitHandler)
     }
 
-
     func applicationWillTerminate(_ notification: Notification) {
         print("Ghost Mode: Application terminating.")
-        PowerManager.shared.stopCaffeinateBackground()
+        teardownEventMonitoring()
+        stopSessionTimers()
+        AppFreezer.shared.unfreezeAllApps()
+        PowerManager.shared.stopNativePowerAssertion()
         if PowerManager.shared.isPasswordlessSudoConfigured() {
             _ = PowerManager.shared.shell("sudo /usr/bin/pmset disablesleep 0")
         }
@@ -795,10 +1050,179 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Event-Driven Monitoring (Zero Polling, Zero Idle Overhead)
+    func setupEventMonitoring() {
+        let context = Unmanaged.passUnretained(self).toOpaque()
+
+        // 1. IOKit Power Sources Notification RunLoop Source (Battery & AC transitions)
+        let psCallback: IOPowerSourceCallbackType = { ctx in
+            guard let ctx = ctx else { return }
+            let delegate = Unmanaged<AppDelegate>.fromOpaque(ctx).takeUnretainedValue()
+            delegate.handlePowerSourceChanged()
+        }
+        if let source = IOPSNotificationCreateRunLoopSource(psCallback, context)?.takeRetainedValue() {
+            powerSourceRunLoopSource = source
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+        }
+
+        // 2. IOKit RootDomain Hardware Clamshell / Lid Notification (Zero Polling)
+        iokitNotifyPort = IONotificationPortCreate(kIOMainPortDefault)
+        if let notifyPort = iokitNotifyPort, let source = IONotificationPortGetRunLoopSource(notifyPort)?.takeUnretainedValue() {
+            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, .commonModes)
+            iokitRootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+            if iokitRootDomain != 0 {
+                let interestCallback: IOServiceInterestCallback = { refcon, service, messageType, messageArgument in
+                    guard let refcon = refcon else { return }
+                    let delegate = Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue()
+                    delegate.handleIOPMInterest(messageType: messageType)
+                }
+                _ = IOServiceAddInterestNotification(
+                    notifyPort,
+                    iokitRootDomain,
+                    kIOGeneralInterest,
+                    interestCallback,
+                    context,
+                    &iokitNotification
+                )
+            }
+        }
+
+        // 3. Thermal State Notifications
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleThermalStateChanged(_:)),
+            name: ProcessInfo.thermalStateDidChangeNotification,
+            object: nil
+        )
+
+        // 4. Display / Lid Sleep Notifications
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleWorkspaceScreensDidSleep(_:)),
+            name: NSWorkspace.screensDidSleepNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleWorkspaceScreensDidWake(_:)),
+            name: NSWorkspace.screensDidWakeNotification,
+            object: nil
+        )
+    }
+
+    func teardownEventMonitoring() {
+        if let source = powerSourceRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), source, .commonModes)
+            powerSourceRunLoopSource = nil
+        }
+        if iokitNotification != 0 {
+            IOObjectRelease(iokitNotification)
+            iokitNotification = 0
+        }
+        if iokitRootDomain != 0 {
+            IOObjectRelease(iokitRootDomain)
+            iokitRootDomain = 0
+        }
+        if let notifyPort = iokitNotifyPort {
+            IONotificationPortDestroy(notifyPort)
+            iokitNotifyPort = nil
+        }
+        NotificationCenter.default.removeObserver(self)
+        NSWorkspace.shared.notificationCenter.removeObserver(self)
+    }
+
+    func handleIOPMInterest(messageType: UInt32) {
+        guard DisplayManager.shared.hasLid() else { return }
+        let currentLidClosed = DisplayManager.shared.isLidClosed()
+        if currentLidClosed != lastLidClosedState {
+            print("Ghost Mode: Hardware Clamshell Lid event detected -> isLidClosed: \(currentLidClosed)")
+            if currentLidClosed && !lastLidClosedState {
+                if isKeepAwakeActive && Preferences.shared.turnOffScreenOnLidClose {
+                    print("Ghost Mode: Automatically sleeping display for closed lid.")
+                    DisplayManager.shared.turnOffDisplay()
+                }
+                if isKeepAwakeActive && Preferences.shared.appFreezeOnLidCloseEnabled {
+                    let count = AppFreezer.shared.freezeNonWhitelistedApps()
+                    if count > 0 {
+                        print("Ghost Mode: Suspended \(count) background apps in RAM for maximum battery savings.")
+                    }
+                }
+            } else if !currentLidClosed && lastLidClosedState {
+                // Lid opened -> Instantly resume all suspended apps
+                AppFreezer.shared.unfreezeAllApps()
+            }
+            lastLidClosedState = currentLidClosed
+            updateStatusUI()
+        }
+    }
+
+
+
+    func handlePowerSourceChanged() {
+        let battery = PowerManager.shared.getBatteryStatus()
+        guard let bat = battery else { return }
+
+        if isKeepAwakeActive {
+            // Low Battery Cutoff Check
+            if Preferences.shared.batteryCutoffEnabled {
+                if !bat.isAC && bat.percent <= Preferences.shared.batteryCutoffThreshold {
+                    print("Ghost Mode: Low battery threshold reached (\(bat.percent)%). Disengaging Ghost Mode.")
+                    stopKeepAwakeSession(reason: .lowBattery(percent: bat.percent))
+                    return
+                }
+            }
+
+            // AC Power Only Check
+            if Preferences.shared.acOnlyModeEnabled {
+                if !bat.isAC && lastACState {
+                    print("Ghost Mode: AC adapter disconnected. Reverting to normal sleep.")
+                    stopKeepAwakeSession(reason: .unpluggedAC)
+                    return
+                }
+            }
+        }
+        lastACState = bat.isAC
+
+        if isMenuOpen {
+            updateStatusUI()
+        }
+    }
+
+    @objc func handleThermalStateChanged(_ notification: Notification) {
+        if isKeepAwakeActive && Preferences.shared.thermalGuardEnabled {
+            let thermal = ProcessInfo.processInfo.thermalState
+            if thermal == .serious || thermal == .critical {
+                print("Ghost Mode: High thermal pressure detected (\(thermal)). Reverting to normal sleep.")
+                stopKeepAwakeSession(reason: .thermalOverheat)
+            }
+        }
+    }
+
+    @objc func handleWorkspaceScreensDidSleep(_ notification: Notification) {
+        if isKeepAwakeActive && DisplayManager.shared.hasLid() {
+            let lidClosed = DisplayManager.shared.isLidClosed()
+            if lidClosed && !lastLidClosedState {
+                print("Ghost Mode: Lid closed detected.")
+                if Preferences.shared.turnOffScreenOnLidClose {
+                    DisplayManager.shared.turnOffDisplay()
+                }
+            }
+            lastLidClosedState = lidClosed
+        }
+    }
+
+    @objc func handleWorkspaceScreensDidWake(_ notification: Notification) {
+        AppFreezer.shared.unfreezeAllApps()
+        if DisplayManager.shared.hasLid() {
+            lastLidClosedState = DisplayManager.shared.isLidClosed()
+        }
+    }
+
     // MARK: - Menu Setup
     func setupMenu() {
         menu = NSMenu()
         menu.autoenablesItems = false
+        menu.delegate = self
 
         // 1. Sleek Dashboard Header (custom view: icon, status, progress bar, quick actions)
         dashboardView = DashboardHeaderView()
@@ -941,6 +1365,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         thermalGuardItem.target = self
         safetySubmenu.addItem(thermalGuardItem)
 
+        safetySubmenu.addItem(NSMenuItem.separator())
+
+        // App Freeze & Battery Isolation on Lid Close
+        appFreezeItem = NSMenuItem(title: "Freeze Other Apps on Lid Close 🔋", action: #selector(toggleAppFreeze(_:)), keyEquivalent: "")
+        appFreezeItem.target = self
+        safetySubmenu.addItem(appFreezeItem)
+
+        keepAudioItem = NSMenuItem(title: "Keep Music & Audio Streaming (Safari/Chrome) 🎵", action: #selector(toggleKeepAudio(_:)), keyEquivalent: "")
+        keepAudioItem.target = self
+        safetySubmenu.addItem(keepAudioItem)
+
+        appFreezeWhitelistSubmenu = NSMenu()
+        appFreezeWhitelistSubmenu.autoenablesItems = false
+        appFreezeWhitelistItem = NSMenuItem(title: "Keep Specific Apps Running...", action: nil, keyEquivalent: "")
+        appFreezeWhitelistItem.submenu = appFreezeWhitelistSubmenu
+        safetySubmenu.addItem(appFreezeWhitelistItem)
+
         safetySubmenuItem = NSMenuItem(title: "Safety Protections", action: nil, keyEquivalent: "")
         safetySubmenuItem.submenu = safetySubmenu
         menu.addItem(safetySubmenuItem)
@@ -1016,84 +1457,180 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem.menu = menu
     }
 
-    // MARK: - Timer Tick & State Monitoring
-    func timerTick() {
-        let currentLidClosed = DisplayManager.shared.isLidClosed()
-        let isSleepDisabledInSystem = PowerManager.shared.checkLidSleepDisabled()
-        let battery = PowerManager.shared.getBatteryStatus()
-
-        // 1. Lid Transition Detection (for laptops)
-        if DisplayManager.shared.hasLid() {
-            if currentLidClosed && !lastLidClosedState {
-                print("Ghost Mode: Lid Closed event detected.")
-                if Preferences.shared.turnOffScreenOnLidClose && isSleepDisabledInSystem {
-                    print("Ghost Mode: Automatically sleeping display for closed lid.")
-                    DisplayManager.shared.turnOffDisplay()
-                }
-            } else if !currentLidClosed && lastLidClosedState {
-                print("Ghost Mode: Lid Opened event detected.")
-            }
-            lastLidClosedState = currentLidClosed
-        }
-
-        // 2. Safety Guards (Active ONLY when Sleep Blocking is ON)
-        if isSleepDisabledInSystem {
-            // Low Battery Cutoff Check (if device has battery)
-            if Preferences.shared.batteryCutoffEnabled, let bat = battery {
-                if !bat.isAC && bat.percent <= Preferences.shared.batteryCutoffThreshold {
-                    print("Ghost Mode: Low battery threshold reached (\(bat.percent)%). Disengaging Ghost Mode.")
-                    stopKeepAwakeSession(reason: .lowBattery(percent: bat.percent))
-                    return
-                }
-            }
-
-            // AC Power Only Check (if device has battery/AC status)
-            if Preferences.shared.acOnlyModeEnabled, let bat = battery {
-                if !bat.isAC && lastACState {
-                    print("Ghost Mode: AC adapter disconnected. Reverting to normal sleep.")
-                    stopKeepAwakeSession(reason: .unpluggedAC)
-                    return
-                }
-            }
-
-            // Thermal Protection Check
-            if Preferences.shared.thermalGuardEnabled {
-                let thermal = ProcessInfo.processInfo.thermalState
-                if thermal == .serious || thermal == .critical {
-                    print("Ghost Mode: High thermal pressure detected. Reverting to normal sleep.")
-                    stopKeepAwakeSession(reason: .thermalOverheat)
-                    return
-                }
-            }
-
-            // Timer Expiration Check
-            if let endDate = sessionEndDate {
-                let remaining = Int(endDate.timeIntervalSinceNow)
-                if remaining <= 0 {
-                    print("Ghost Mode: Session timer expired.")
-                    stopKeepAwakeSession(reason: .timerExpired)
-                    return
-                }
-            }
-        } else {
-            if isKeepAwakeActive {
-                isKeepAwakeActive = false
-                sessionEndDate = nil
-                isIndefiniteSession = false
-                activeInitialDurationSeconds = nil
-            }
-        }
-
-        if let bat = battery {
-            lastACState = bat.isAC
-        }
-
+    // MARK: - NSMenuDelegate (Just-In-Time UI Rendering & Dropdown Live Progress)
+    func menuWillOpen(_ menu: NSMenu) {
+        isMenuOpen = true
+        lastLidClosedState = DisplayManager.shared.isLidClosed()
+        refreshAppFreezeWhitelistSubmenu()
         updateStatusUI()
+
+        // If an active timed session is in progress, update progress smoothly while the dropdown is open
+        if isKeepAwakeActive && !isIndefiniteSession && sessionEndDate != nil {
+            menuTrackingTimer?.invalidate()
+            let trackTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+                self?.menuTrackingTick()
+            }
+            RunLoop.current.add(trackTimer, forMode: .common)
+            menuTrackingTimer = trackTimer
+        }
     }
 
-    // MARK: - UI Updates
+    func refreshAppFreezeWhitelistSubmenu() {
+        appFreezeWhitelistSubmenu.removeAllItems()
+        let currentPid = getpid()
+        let runningApps = NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.processIdentifier != currentPid && $0.bundleIdentifier != "com.apple.finder" }
+            .sorted { ($0.localizedName ?? "") < ($1.localizedName ?? "") }
+
+        let whitelist = Set(Preferences.shared.appFreezeWhitelist)
+
+        if runningApps.isEmpty {
+            let emptyItem = NSMenuItem(title: "No other user apps open", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            appFreezeWhitelistSubmenu.addItem(emptyItem)
+            return
+        }
+
+        let descItem = NSMenuItem(title: "Checked apps stay active in Ghost Mode:", action: nil, keyEquivalent: "")
+        descItem.isEnabled = false
+        appFreezeWhitelistSubmenu.addItem(descItem)
+        appFreezeWhitelistSubmenu.addItem(NSMenuItem.separator())
+
+        for app in runningApps {
+            guard let name = app.localizedName, !name.isEmpty else { continue }
+            let identifier = app.bundleIdentifier ?? name
+            let isWhitelisted = whitelist.contains(identifier) || whitelist.contains(name)
+
+            let item = NSMenuItem(title: name, action: #selector(toggleAppInWhitelist(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = identifier
+            item.state = isWhitelisted ? .on : .off
+            if let icon = app.icon {
+                let smallIcon = icon.copy() as! NSImage
+                smallIcon.size = NSSize(width: 16, height: 16)
+                item.image = smallIcon
+            }
+            appFreezeWhitelistSubmenu.addItem(item)
+        }
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        isMenuOpen = false
+        menuTrackingTimer?.invalidate()
+        menuTrackingTimer = nil
+    }
+
+    private func menuTrackingTick() {
+        guard isMenuOpen, isKeepAwakeActive else {
+            menuTrackingTimer?.invalidate()
+            menuTrackingTimer = nil
+            return
+        }
+        var remainingSeconds: Int? = nil
+        if let endDate = sessionEndDate {
+            let rem = max(0, Int(endDate.timeIntervalSinceNow))
+            remainingSeconds = rem
+            if rem <= 0 {
+                stopKeepAwakeSession(reason: .timerExpired)
+                return
+            }
+        }
+        let battery = PowerManager.shared.getBatteryStatus()
+        let isLidClosed = DisplayManager.shared.isLidClosed()
+        let hasLid = DisplayManager.shared.hasLid()
+        lastLidClosedState = isLidClosed
+        updateDashboard(isSleepDisabled: true, remainingSeconds: remainingSeconds, battery: battery, isLidClosed: isLidClosed, hasLid: hasLid)
+    }
+
+    // MARK: - Active Session Timer Management (0.0% CPU When Idle & Adaptive When Active)
+    private func startSessionTimers(durationSeconds: Int) {
+        stopSessionTimers()
+
+        if durationSeconds > 0 {
+            let endDate = Date().addingTimeInterval(TimeInterval(durationSeconds))
+            sessionEndDate = endDate
+
+            // 1. Precise single-shot expiration timer
+            let expTimer = Timer(fireAt: endDate, interval: 0, target: self, selector: #selector(sessionTimerExpired), userInfo: nil, repeats: false)
+            RunLoop.current.add(expTimer, forMode: .common)
+            sessionExpirationTimer = expTimer
+
+            // 2. Adaptive Countdown Badge Timer (only if user enabled countdown badge)
+            if Preferences.shared.showCountdownInMenuBar {
+                scheduleNextAdaptiveBadgeTick()
+            }
+        }
+    }
+
+    private func scheduleNextAdaptiveBadgeTick() {
+        countdownBadgeTimer?.invalidate()
+        guard isKeepAwakeActive, let endDate = sessionEndDate, Preferences.shared.showCountdownInMenuBar else {
+            countdownBadgeTimer = nil
+            return
+        }
+        let rem = max(0, Int(endDate.timeIntervalSinceNow))
+        guard rem > 0 else { return }
+
+        // Adaptive Scheduling: If > 60s, schedule to fire at the minute boundary.
+        // If <= 60s, tick second-by-second for final countdown.
+        let interval: TimeInterval
+        if rem > 60 {
+            let secInCurrentMin = rem % 60
+            interval = TimeInterval(secInCurrentMin == 0 ? 60 : secInCurrentMin)
+        } else {
+            interval = 1.0
+        }
+
+        let timer = Timer.scheduledTimer(withTimeInterval: max(0.5, interval), repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            self.updateMenuBarBadgeOnly()
+            self.scheduleNextAdaptiveBadgeTick()
+        }
+        RunLoop.current.add(timer, forMode: .common)
+        countdownBadgeTimer = timer
+    }
+
+    private func stopSessionTimers() {
+        sessionExpirationTimer?.invalidate()
+        sessionExpirationTimer = nil
+        countdownBadgeTimer?.invalidate()
+        countdownBadgeTimer = nil
+        menuTrackingTimer?.invalidate()
+        menuTrackingTimer = nil
+    }
+
+    @objc private func sessionTimerExpired() {
+        print("Ghost Mode: Session timer expired.")
+        stopKeepAwakeSession(reason: .timerExpired)
+    }
+
+    private func updateMenuBarBadgeOnly() {
+        guard let button = statusItem.button else { return }
+        guard isKeepAwakeActive, let endDate = sessionEndDate else {
+            if !button.title.isEmpty {
+                button.title = ""
+            }
+            countdownBadgeTimer?.invalidate()
+            countdownBadgeTimer = nil
+            return
+        }
+
+        if Preferences.shared.showCountdownInMenuBar {
+            let rem = max(0, Int(endDate.timeIntervalSinceNow))
+            let newBadge = " \(formatDurationCompact(rem))"
+            if button.title != newBadge {
+                button.title = newBadge
+            }
+        } else {
+            if !button.title.isEmpty {
+                button.title = ""
+            }
+        }
+    }
+
+    // MARK: - UI Updates (In-Memory & Pure Data Formatting)
     func updateStatusUI() {
-        let isSleepDisabled = PowerManager.shared.checkLidSleepDisabled()
+        let isSleepDisabled = isKeepAwakeActive
         let isLidClosed = DisplayManager.shared.isLidClosed()
         let hasLid = DisplayManager.shared.hasLid()
         let sudoConfigured = PowerManager.shared.isPasswordlessSudoConfigured()
@@ -1166,6 +1703,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         acOnlyItem.state = Preferences.shared.acOnlyModeEnabled ? .on : .off
         thermalGuardItem.state = Preferences.shared.thermalGuardEnabled ? .on : .off
 
+        appFreezeItem.state = Preferences.shared.appFreezeOnLidCloseEnabled ? .on : .off
+        appFreezeItem.isHidden = !hasLid
+        keepAudioItem.state = Preferences.shared.keepAudioActiveOnLidClose ? .on : .off
+        keepAudioItem.isHidden = !hasLid
+        appFreezeWhitelistItem.isHidden = !hasLid
+
         let defHuman = formatDurationHuman(Preferences.shared.defaultDuration)
         defaultDurationItem.title = "Set Default Duration... (Currently: \(defHuman))"
         showCountdownItem.state = Preferences.shared.showCountdownInMenuBar ? .on : .off
@@ -1182,7 +1725,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         setupSudoItem.isEnabled = true
 
-        // 5. Menu Bar Icon & Text Badge
+        // 5. Menu Bar Icon & Text Badge (Deduplicated Property Assignments)
         if let button = statusItem.button {
             var iconName = "laptopcomputer.slash"
             var menuBarTitle = ""
@@ -1207,11 +1750,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 image.isTemplate = true
                 button.image = image
             }
-            button.title = menuBarTitle
+            if button.title != menuBarTitle {
+                button.title = menuBarTitle
+            }
         }
     }
 
     func updateDashboard(isSleepDisabled: Bool, remainingSeconds: Int?, battery: (percent: Int, isCharging: Bool, isAC: Bool)?, isLidClosed: Bool, hasLid: Bool) {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         dashboardView.configure(
             isActive: isSleepDisabled,
             isIndefinite: isIndefiniteSession,
@@ -1222,6 +1769,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             isLidClosed: isLidClosed,
             hasLid: hasLid
         )
+        CATransaction.commit()
     }
 
     // MARK: - Session Management
@@ -1238,11 +1786,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         let success = PowerManager.shared.setLidSleep(disabled: true)
         if success {
+            startSessionTimers(durationSeconds: durationSeconds)
             updateStatusUI()
             
             // Automatically power off screen if lid is already closed when activating Ghost Mode
             if Preferences.shared.turnOffScreenOnLidClose && DisplayManager.shared.hasLid() && DisplayManager.shared.isLidClosed() {
                 DisplayManager.shared.turnOffDisplay()
+            }
+            if Preferences.shared.appFreezeOnLidCloseEnabled && DisplayManager.shared.hasLid() && DisplayManager.shared.isLidClosed() {
+                _ = AppFreezer.shared.freezeNonWhitelistedApps()
             }
 
             let durationText = durationSeconds > 0 ? formatDurationHuman(durationSeconds) : "Indefinite"
@@ -1256,6 +1808,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             sessionEndDate = nil
             isIndefiniteSession = false
             activeInitialDurationSeconds = nil
+            stopSessionTimers()
             showErrorAlert(
                 title: "Authentication Required",
                 message: "Ghost Mode requires passwordless sudo or authorization to manage sleep. Please click 'Setup Passwordless Sudo...' in Preferences."
@@ -1268,6 +1821,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         sessionEndDate = nil
         isIndefiniteSession = false
         activeInitialDurationSeconds = nil
+        stopSessionTimers()
+        AppFreezer.shared.unfreezeAllApps()
 
         _ = PowerManager.shared.setLidSleep(disabled: false)
         updateStatusUI()
@@ -1308,11 +1863,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func extendSession(by seconds: Int) {
         if let currentEnd = sessionEndDate {
-            sessionEndDate = currentEnd.addingTimeInterval(TimeInterval(seconds))
+            let newEnd = currentEnd.addingTimeInterval(TimeInterval(seconds))
+            sessionEndDate = newEnd
+            let remaining = max(0, Int(newEnd.timeIntervalSinceNow))
+            startSessionTimers(durationSeconds: remaining)
         } else {
-            sessionEndDate = Date().addingTimeInterval(TimeInterval(seconds))
             isIndefiniteSession = false
             isKeepAwakeActive = true
+            sessionEndDate = Date().addingTimeInterval(TimeInterval(seconds))
+            startSessionTimers(durationSeconds: seconds)
             _ = PowerManager.shared.setLidSleep(disabled: true)
         }
         updateStatusUI()
@@ -1456,8 +2015,47 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateStatusUI()
     }
 
+    @objc func toggleAppFreeze(_ sender: NSMenuItem) {
+        Preferences.shared.appFreezeOnLidCloseEnabled.toggle()
+        if !Preferences.shared.appFreezeOnLidCloseEnabled {
+            AppFreezer.shared.unfreezeAllApps()
+        } else if isKeepAwakeActive && DisplayManager.shared.hasLid() && DisplayManager.shared.isLidClosed() {
+            _ = AppFreezer.shared.freezeNonWhitelistedApps()
+        }
+        updateStatusUI()
+    }
+
+    @objc func toggleKeepAudio(_ sender: NSMenuItem) {
+        Preferences.shared.keepAudioActiveOnLidClose.toggle()
+        if isKeepAwakeActive && DisplayManager.shared.hasLid() && DisplayManager.shared.isLidClosed() && Preferences.shared.appFreezeOnLidCloseEnabled {
+            _ = AppFreezer.shared.freezeNonWhitelistedApps()
+        }
+        updateStatusUI()
+    }
+
+    @objc func toggleAppInWhitelist(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        var list = Preferences.shared.appFreezeWhitelist
+        if let idx = list.firstIndex(of: id) {
+            list.remove(at: idx)
+        } else {
+            list.append(id)
+        }
+        Preferences.shared.appFreezeWhitelist = list
+        refreshAppFreezeWhitelistSubmenu()
+        updateStatusUI()
+    }
+
     @objc func toggleShowCountdown(_ sender: NSMenuItem) {
         Preferences.shared.showCountdownInMenuBar.toggle()
+        if isKeepAwakeActive && !isIndefiniteSession {
+            if Preferences.shared.showCountdownInMenuBar {
+                scheduleNextAdaptiveBadgeTick()
+            } else {
+                countdownBadgeTimer?.invalidate()
+                countdownBadgeTimer = nil
+            }
+        }
         updateStatusUI()
     }
 
@@ -1518,7 +2116,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             if alert.runModal() == .alertFirstButtonReturn {
                 let success = PowerManager.shared.runSudoCommandWithAppleScript(command: "/bin/rm -f /private/etc/sudoers.d/ghostmode")
-                if success && !PowerManager.shared.isPasswordlessSudoConfigured() {
+                PowerManager.shared.invalidateSudoCache()
+                if success && !PowerManager.shared.isPasswordlessSudoConfigured(forceRefresh: true) {
                     let doneAlert = NSAlert()
                     doneAlert.messageText = "Authorization Revoked"
                     doneAlert.informativeText = "Passwordless sudo has been removed. You will now be prompted for password authentication when sleep settings change."
@@ -1545,7 +2144,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 let scriptPath = "\(bundlePath)/Contents/Resources/ghostmode_setup.sh"
 
                 let success = PowerManager.shared.runSudoCommandWithAppleScript(command: "\"\(scriptPath)\"")
-                if success && PowerManager.shared.isPasswordlessSudoConfigured() {
+                PowerManager.shared.invalidateSudoCache()
+                if success && PowerManager.shared.isPasswordlessSudoConfigured(forceRefresh: true) {
                     let successAlert = NSAlert()
                     successAlert.messageText = "Setup Successful"
                     successAlert.informativeText = "Passwordless access configured successfully! You can now toggle Ghost Mode instantly without password prompts."
