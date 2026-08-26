@@ -62,26 +62,9 @@
 
 ## 📸 Menu Interface & Dashboard
 
-```
-┌──────────────────────────────────────────────┐
-│  👻 Ghost Mode                        Active │
-│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 42:15 left    │
-│  Sleep behaves normally      ⚡ 85% · Lid open│
-│  [  🛑 Stop  ]              [     +30m     ] │
-├──────────────────────────────────────────────┤
-│  Extend More...                            ▶ │
-│  Start Session for...                      ▶ │
-│  Turn Off Screen Now 💤                      │
-├──────────────────────────────────────────────┤
-│  Turn Off Screen on Lid Close              ✓ │
-│  Safety Protections                        ▶ │
-│  Preferences                               ▶ │
-├──────────────────────────────────────────────┤
-│  Feedback & Bug Reports...                   │
-│  Developed by Arpit                          │
-│  Quit Ghost Mode                          ⌘Q │
-└──────────────────────────────────────────────┘
-```
+<div align="center">
+  <img src="GhostMode_Dashboard.png" alt="Ghost Mode Menu Interface" width="340" style="border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.35);" />
+</div>
 
 ---
 

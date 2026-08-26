@@ -895,14 +895,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         settingsSeparator = NSMenuItem.separator()
         menu.addItem(settingsSeparator)
 
-        // 4. Screen, Safety & Preferences
-        screenOnLidCloseItem = NSMenuItem(title: "Turn Off Screen on Lid Close", action: #selector(toggleScreenOnLidClose(_:)), keyEquivalent: "")
-        screenOnLidCloseItem.target = self
-        menu.addItem(screenOnLidCloseItem)
-
         // Safety Submenu
         safetySubmenu = NSMenu()
         safetySubmenu.autoenablesItems = false
+
+        screenOnLidCloseItem = NSMenuItem(title: "Turn Off Screen on Lid Close", action: #selector(toggleScreenOnLidClose(_:)), keyEquivalent: "")
+        screenOnLidCloseItem.target = self
+        safetySubmenu.addItem(screenOnLidCloseItem)
+
+        safetySubmenu.addItem(NSMenuItem.separator())
 
         lowBatterySubmenu = NSMenu()
         lowBatterySubmenu.autoenablesItems = false
@@ -1236,6 +1237,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let success = PowerManager.shared.setLidSleep(disabled: true)
         if success {
             updateStatusUI()
+            
+            // Automatically power off screen if lid is already closed when activating Ghost Mode
+            if Preferences.shared.turnOffScreenOnLidClose && DisplayManager.shared.hasLid() && DisplayManager.shared.isLidClosed() {
+                DisplayManager.shared.turnOffDisplay()
+            }
+
             let durationText = durationSeconds > 0 ? formatDurationHuman(durationSeconds) : "Indefinite"
             NotificationHelper.send(
                 title: "👻 Ghost Mode Active",
