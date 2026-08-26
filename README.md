@@ -73,28 +73,42 @@
 ### Prerequisites
 * macOS 12.0 (Monterey) or later
 * Xcode Command Line Tools (`xcode-select --install`)
+* Git
 
-### 1. Build and Install Directly to `/Applications`:
+### 1. Clone the Repository
+```bash
+git clone https://github.com/malikarpit/Ghost-Mode.git
+cd Ghost-Mode
+```
+
+### 2. Build and Install Directly to `/Applications`:
 ```bash
 make install
 ```
 
-### 2. Build Drag-and-Drop `.dmg` Installer:
+### 3. (Optional) Build Drag-and-Drop `.dmg` Installer:
 ```bash
 make dmg
 ```
 This generates `GhostMode-Installer.dmg` in the project root.
 
+### 4. Uninstall:
+```bash
+make uninstall
+```
+
 ---
 
 ## 🔐 Privilege Configuration (Passwordless Sudo)
 
-Managing macOS clamshell sleep behavior via `pmset` requires root privileges. Ghost Mode includes a secure setup helper that configures a scoped sudoers rule allowing only `/usr/bin/pmset` without password prompts:
+Managing macOS clamshell sleep behavior via `pmset` requires administrator privileges. Ghost Mode includes a secure setup helper that configures a scoped sudoers rule allowing only `/usr/bin/pmset` without repeated password prompts:
 
-```bash
-sudo ./ghostmode_setup.sh
-```
-*Or simply click **Preferences > Setup Passwordless Sudo...** directly inside the app.*
+- **Via App Interface (Easiest):**  
+  Click **Preferences > Setup Passwordless Sudo...** inside Ghost Mode.
+- **Via Terminal:**  
+  ```bash
+  sudo ./ghostmode_setup.sh
+  ```
 
 ---
 

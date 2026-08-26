@@ -58,4 +58,12 @@ dmg: all
 	rm -rf dist
 	@echo "Successfully created Universal $(DMG_NAME) by Arpit!"
 
-.PHONY: all clean install dmg
+uninstall:
+	@echo "Uninstalling Ghost Mode..."
+	pkill -f "GhostMode" || true
+	rm -rf "/Applications/$(APP_BUNDLE)"
+	rm -f ~/Library/LaunchAgents/com.arpit.ghostmode.plist
+	@echo "To remove sudoers privilege rule: sudo rm -f /private/etc/sudoers.d/ghostmode"
+	@echo "Ghost Mode uninstalled successfully."
+
+.PHONY: all clean install dmg uninstall
