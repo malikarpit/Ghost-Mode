@@ -254,6 +254,31 @@ class AppFreezer {
         "com.google.antigravity-ide"
     ]
 
+    // Universal Audio & Media Player Signatures (Browsers, Music, Podcasts, Video, Calls)
+    private let universalMediaIdentifiers: Set<String> = [
+        "com.apple.Safari",
+        "com.google.Chrome",
+        "com.apple.Music",
+        "com.apple.podcasts",
+        "com.apple.QuickTimePlayerX",
+        "com.spotify.client",
+        "org.videolan.vlc",
+        "com.colliderli.iina",
+        "com.brave.Browser",
+        "company.thebrowser.Browser", // Arc Browser
+        "org.mozilla.firefox",
+        "com.microsoft.edgemac",
+        "com.operasoftware.Opera",
+        "com.tidal.desktop",
+        "com.amazon.music",
+        "com.deezer.Deezer",
+        "com.soundcloud.desktop",
+        "com.hnc.Discord",
+        "discordapp.com",
+        "us.zoom.xos",
+        "com.tinyspeck.slackmacgap"
+    ]
+
     func freezeNonWhitelistedApps() -> Int {
         guard Preferences.shared.appFreezeOnLidCloseEnabled else { return 0 }
         unfreezeAllApps()
@@ -264,9 +289,7 @@ class AppFreezer {
         let runningApps = NSWorkspace.shared.runningApplications.filter { $0.activationPolicy == .regular }
 
         var count = 0
-        var freezeSafari = false
-        var freezeChrome = false
-        var freezeSpotify = false
+        var frozenMediaHelpers: [String] = []
 
         for app in runningApps {
             let pid = app.processIdentifier
@@ -280,21 +303,26 @@ class AppFreezer {
                 continue
             }
 
-            // Check if app is a media/browser app
-            let isSafari = (bid == "com.apple.Safari" || name.contains("Safari"))
-            let isChrome = (bid == "com.google.Chrome" || name.contains("Chrome"))
-            let isSpotify = (bid == "com.spotify.client" || name.contains("Spotify"))
+            // Universal Audio Detection (Browsers, Media Players, Calls)
+            let isMedia = universalMediaIdentifiers.contains(bid) ||
+                          name.localizedCaseInsensitiveContains("music") ||
+                          name.localizedCaseInsensitiveContains("audio") ||
+                          name.localizedCaseInsensitiveContains("player") ||
+                          name.localizedCaseInsensitiveContains("podcast") ||
+                          name.localizedCaseInsensitiveContains("spotify") ||
+                          name.localizedCaseInsensitiveContains("safari") ||
+                          name.localizedCaseInsensitiveContains("chrome")
 
-            if keepAudio && (isSafari || isChrome || isSpotify) {
+            if keepAudio && isMedia {
                 // Audio Keep-Alive Mode:
-                // Suspend the main UI window process to stop display rendering & window compositing,
-                // while leaving audio decoding daemons (com.apple.WebKit.GPU, etc.) completely active.
+                // Suspend the main UI window process to stop display rendering & GPU compositing,
+                // while leaving audio decoding daemons and CoreAudio completely active.
                 if kill(pid, SIGSTOP) == 0 {
                     frozenPids.insert(pid)
                     count += 1
                     print("AppFreezer: Suspended UI for '\(name)' (PID: \(pid)) in RAM (Audio kept streaming).")
                 }
-                // Do NOT freeze WebKit.GPU or WebKit.Networking or CoreAudio so music keeps playing!
+                // Do NOT freeze WebKit.GPU, CoreAudio, or audio renderers so music keeps playing!
                 continue
             }
 
@@ -304,41 +332,19 @@ class AppFreezer {
                 count += 1
                 print("AppFreezer: Suspended '\(name)' (PID: \(pid)) in RAM.")
 
-                if isSafari { freezeSafari = true }
-                if isChrome { freezeChrome = true }
-                if isSpotify { freezeSpotify = true }
+                if isMedia {
+                    frozenMediaHelpers.append(name)
+                }
             }
         }
 
-        // If audio keep-alive is OFF and browser was frozen, also halt audio decoders
-        if !keepAudio {
-            if freezeSafari {
-                let safariHelpers = getPidsMatching(patterns: ["com.apple.WebKit.WebContent", "com.apple.WebKit.GPU", "com.apple.WebKit.Networking"])
-                for hPid in safariHelpers {
-                    if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
-                        if kill(hPid, SIGSTOP) == 0 {
-                            frozenPids.insert(hPid)
-                        }
-                    }
-                }
-            }
-            if freezeChrome {
-                let chromeHelpers = getPidsMatching(patterns: ["Google Chrome Helper"])
-                for hPid in chromeHelpers {
-                    if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
-                        if kill(hPid, SIGSTOP) == 0 {
-                            frozenPids.insert(hPid)
-                        }
-                    }
-                }
-            }
-            if freezeSpotify {
-                let spotifyHelpers = getPidsMatching(patterns: ["Spotify Helper"])
-                for hPid in spotifyHelpers {
-                    if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
-                        if kill(hPid, SIGSTOP) == 0 {
-                            frozenPids.insert(hPid)
-                        }
+        // If audio keep-alive is OFF and media apps were frozen, also halt child audio decoders
+        if !keepAudio && !frozenMediaHelpers.isEmpty {
+            let mediaHelpers = getPidsMatching(patterns: ["com.apple.WebKit.WebContent", "com.apple.WebKit.GPU", "com.apple.WebKit.Networking", "Google Chrome Helper", "Spotify Helper", "VLC"])
+            for hPid in mediaHelpers {
+                if hPid > 100 && hPid != currentPid && !frozenPids.contains(hPid) {
+                    if kill(hPid, SIGSTOP) == 0 {
+                        frozenPids.insert(hPid)
                     }
                 }
             }
@@ -1372,7 +1378,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         appFreezeItem.target = self
         safetySubmenu.addItem(appFreezeItem)
 
-        keepAudioItem = NSMenuItem(title: "Keep Music & Audio Streaming (Safari/Chrome) 🎵", action: #selector(toggleKeepAudio(_:)), keyEquivalent: "")
+        keepAudioItem = NSMenuItem(title: "Keep Music & Audio Streaming 🎵", action: #selector(toggleKeepAudio(_:)), keyEquivalent: "")
         keepAudioItem.target = self
         safetySubmenu.addItem(keepAudioItem)
 
