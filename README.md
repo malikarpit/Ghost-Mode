@@ -11,6 +11,13 @@
   [![Language](https://img.shields.io/badge/Language-Swift%205.9%2B-orange.svg?logo=swift)](https://swift.org)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
   [![Developer: Arpit](https://img.shields.io/badge/Developer-Arpit-purple.svg)](https://github.com/malikarpit)
+  [![GitHub Release](https://img.shields.io/github/v/release/malikarpit/Ghost-Mode?color=blue&label=Latest%20Release)](https://github.com/malikarpit/Ghost-Mode/releases/latest)
+
+  <br />
+
+  <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest">
+    <img src="https://img.shields.io/badge/📥%20Download-GhostMode--Installer.dmg-2ea44f?style=for-the-badge&logo=apple" alt="Download Ghost Mode" />
+  </a>
 
 </div>
 
@@ -19,6 +26,15 @@
 ## 🌟 What is Ghost Mode?
 
 **Ghost Mode** is a fast, native macOS menu bar utility engineered to keep your Mac running heavy background workloads (such as AI agents, model downloads, long compilations, torrents, or server processes) with the **MacBook lid closed**, while **instantly powering down the display backlight** to eliminate thermal buildup and conserve battery life.
+
+---
+
+## 📥 Direct Download & Installation
+
+### Option 1: Download Pre-built Universal DMG (Recommended)
+1. Download the latest **`GhostMode-Installer.dmg`** from [**Releases**](https://github.com/malikarpit/Ghost-Mode/releases/latest).
+2. Open the `.dmg` file and drag **Ghost Mode.app** into your **Applications** folder.
+3. Launch **Ghost Mode** from Spotlight (`⌘ Space`) or Launchpad.
 
 ---
 
@@ -40,6 +56,7 @@
   - Single-instance protection with automatic menu reveal on re-launch.
   - Optional Dock icon toggle (`Preferences > Show App Icon in Dock`).
   - Optional Start at Login LaunchAgent integration.
+  - In-app feedback and bug report shortcut.
 
 ---
 
@@ -60,6 +77,7 @@
 │  Safety Protections                        ▶ │
 │  Preferences                               ▶ │
 ├──────────────────────────────────────────────┤
+│  Feedback & Bug Reports...                   │
 │  Developed by Arpit                          │
 │  Quit Ghost Mode                          ⌘Q │
 └──────────────────────────────────────────────┘
@@ -67,7 +85,7 @@
 
 ---
 
-## 🛠️ Building & Installation
+## 🛠️ Building From Source
 
 ### Prerequisites
 * macOS 12.0 (Monterey) or later
@@ -94,6 +112,20 @@ Managing macOS clamshell sleep behavior via `pmset` requires root privileges. Gh
 sudo ./ghostmode_setup.sh
 ```
 *Or simply click **Preferences > Setup Passwordless Sudo...** directly inside the app.*
+
+---
+
+## 🐛 Bug Reports & Feature Requests
+
+Have a feature suggestion or encountered a bug?
+- **In-App:** Click the menu bar icon ➡️ **Feedback & Bug Reports...**
+- **On GitHub:** Open an issue on our [**Issue Tracker**](https://github.com/malikarpit/Ghost-Mode/issues/new/choose).
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for details on our code of conduct and the development process.
 
 ---
 

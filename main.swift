@@ -21,6 +21,9 @@ struct AppMetadata {
     static let copyright = "Copyright © 2026 Arpit. All rights reserved."
     static let digitalSignature = "Signed by Arpit (com.arpit.GhostMode)"
     static let summary = "Keep your Mac running with the lid closed, instantly power down the display to eliminate heat and conserve battery, and set customizable keep-awake timers."
+    static let githubRepoURL = "https://github.com/malikarpit/Ghost-Mode"
+    static let issuesURL = "https://github.com/malikarpit/Ghost-Mode/issues"
+    static let reportURL = "https://github.com/malikarpit/Ghost-Mode/issues/new/choose"
 }
 
 // MARK: - Universal Single-Instance Enforcement
@@ -660,6 +663,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var loginItem: NSMenuItem!
     var defaultDurationItem: NSMenuItem!
     var aboutItem: NSMenuItem!
+    var reportBugItem: NSMenuItem!
+    var viewGitHubItem: NSMenuItem!
     var developerCreditItem: NSMenuItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -976,11 +981,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         aboutItem.target = self
         prefSubmenu.addItem(aboutItem)
 
+        // Report Bug / Suggestion item
+        reportBugItem = NSMenuItem(title: "Report Bug / Suggestion...", action: #selector(openReportIssuePage(_:)), keyEquivalent: "")
+        reportBugItem.target = self
+        prefSubmenu.addItem(reportBugItem)
+
+        // View GitHub item
+        viewGitHubItem = NSMenuItem(title: "View Source on GitHub...", action: #selector(openGitHubPage(_:)), keyEquivalent: "")
+        viewGitHubItem.target = self
+        prefSubmenu.addItem(viewGitHubItem)
+
         preferencesSubmenuItem = NSMenuItem(title: "Preferences", action: nil, keyEquivalent: "")
         preferencesSubmenuItem.submenu = prefSubmenu
         menu.addItem(preferencesSubmenuItem)
 
         menu.addItem(NSMenuItem.separator())
+
+        // Quick Feedback & Bug Report Item in Root Menu
+        let quickFeedbackItem = NSMenuItem(title: "Feedback & Bug Reports...", action: #selector(openReportIssuePage(_:)), keyEquivalent: "")
+        quickFeedbackItem.target = self
+        menu.addItem(quickFeedbackItem)
 
         // Developer Attribution Footer
         developerCreditItem = NSMenuItem(title: "Developed by \(AppMetadata.author)", action: #selector(showAboutDialog(_:)), keyEquivalent: "")
@@ -1514,14 +1534,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         • Digital ID: \(AppMetadata.digitalSignature)
         • Architecture: Universal Binary (Apple Silicon + Intel 64-bit)
         • Compatibility: macOS 12.0+ (Monterey, Ventura, Sonoma, Sequoia+)
+        • Open Source: GitHub Community Edition
         """
         alert.alertStyle = .informational
         if let icon = NSApp.applicationIconImage {
             alert.icon = icon
         }
         alert.addButton(withTitle: "OK")
+        alert.addButton(withTitle: "View on GitHub")
+        alert.addButton(withTitle: "Report Bug / Suggestion")
         NSApp.activate(ignoringOtherApps: true)
-        alert.runModal()
+        let response = alert.runModal()
+        if response == .alertSecondButtonReturn {
+            if let url = URL(string: AppMetadata.githubRepoURL) {
+                NSWorkspace.shared.open(url)
+            }
+        } else if response == .alertThirdButtonReturn {
+            if let url = URL(string: AppMetadata.reportURL) {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
+    @objc func openReportIssuePage(_ sender: NSMenuItem) {
+        if let url = URL(string: AppMetadata.reportURL) {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    @objc func openGitHubPage(_ sender: NSMenuItem) {
+        if let url = URL(string: AppMetadata.githubRepoURL) {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     @objc func toggleLogin(_ sender: NSMenuItem) {
