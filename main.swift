@@ -752,19 +752,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func setupWatchdog() {
-        let cleanExitHandler: @convention(c) (Int32) -> Void = { sig in
-            print("Ghost Mode (by \(AppMetadata.author)): Caught signal \(sig). Restoring normal sleep mode...")
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", "sudo /usr/bin/pmset disablesleep 0 2>/dev/null"]
-            try? process.run()
-            process.waitUntilExit()
-            exit(0)
+        // Signal handler must ONLY call async-signal-safe functions (POSIX requirement).
+        // Foundation's Process/NSTask spawns threads and is NOT async-signal-safe.
+        // We use execv() directly — it replaces the current process image with pmset,
+        // which is the only safe way to run a subprocess from a signal handler.
+        let cleanExitHandler: @convention(c) (Int32) -> Void = { _ in
+            // Restore normal sleep using execv (async-signal-safe)
+            // This replaces the process with: /usr/bin/sudo /usr/bin/pmset disablesleep 0
+            withUnsafePointer(to: UnsafePointer<CChar>(bitPattern: 0)) { _ in
+                var args: [UnsafeMutablePointer<CChar>?] = [
+                    strdup("/usr/bin/sudo"),
+                    strdup("/usr/bin/pmset"),
+                    strdup("disablesleep"),
+                    strdup("0"),
+                    nil
+                ]
+                execv("/usr/bin/sudo", &args)
+            }
+            // If execv fails (e.g. sudo not available), just exit cleanly
+            _exit(0)
         }
         signal(SIGINT, cleanExitHandler)
         signal(SIGTERM, cleanExitHandler)
         signal(SIGHUP, cleanExitHandler)
     }
+
 
     func applicationWillTerminate(_ notification: Notification) {
         print("Ghost Mode: Application terminating.")

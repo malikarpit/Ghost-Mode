@@ -6,8 +6,8 @@
 #  Project: Ghost Mode for macOS (com.arpit.GhostMode)
 # ==============================================================================
 
-# Exit on error
-set -e
+# Exit on error, unbound variables, and pipe failures
+set -euo pipefail
 
 # Ensure the script is run with sudo
 if [ "$EUID" -ne 0 ]; then
