@@ -10,7 +10,7 @@
   [![Architecture](https://img.shields.io/badge/Architecture-Universal%20(Apple%20Silicon%20%2B%20Intel)-brightgreen.svg)](https://apple.com)
   [![Language](https://img.shields.io/badge/Language-Swift%205.9%2B-orange.svg?logo=swift)](https://swift.org)
   [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-  [![Developer: Arpit](https://img.shields.io/badge/Developer-Arpit-purple.svg)](https://github.com)
+  [![Developer: Arpit](https://img.shields.io/badge/Developer-Arpit-purple.svg)](https://github.com/malikarpit)
 
 </div>
 
