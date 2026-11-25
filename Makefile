@@ -14,20 +14,31 @@ MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 SDK_PATH = $(shell xcrun --show-sdk-path --sdk macosx)
 MIN_MACOS = 12.0
+HOST_ARCH = $(shell uname -m)
 DMG_NAME = GhostMode-Installer.dmg
+SWIFT_SOURCES = $(wildcard Sources/*.swift)
+BUILD_DIR = /tmp/ghostmode_build
+TEST_BIN = $(BUILD_DIR)/GhostModeTests
+TEST_SOURCES = \
+	Sources/Models.swift \
+	Sources/Preferences.swift \
+	Sources/DurationHelpers.swift \
+	Sources/SafetyControllers.swift \
+	Sources/AppFreezer.swift \
+	Tests/GhostModeTests.swift
 
 all: $(APP_BUNDLE)
 
-$(APP_BUNDLE): main.swift Info.plist ghostmode_setup.sh AppIcon.icns
+$(APP_BUNDLE): $(SWIFT_SOURCES) Info.plist ghostmode_setup.sh AppIcon.icns
 	@echo "Creating app bundle structure for Ghost Mode (by Arpit)..."
 	mkdir -p "$(MACOS_DIR)"
 	mkdir -p "$(RESOURCES_DIR)"
 	@echo "Compiling Universal Swift binary (arm64 + x86_64 for macOS $(MIN_MACOS)+)..."
-	mkdir -p /tmp/ghostmode_build
-	swiftc -target arm64-apple-macos$(MIN_MACOS) -O -sdk $(SDK_PATH) main.swift -o /tmp/ghostmode_build/$(EXEC_NAME)_arm64
-	swiftc -target x86_64-apple-macos$(MIN_MACOS) -O -sdk $(SDK_PATH) main.swift -o /tmp/ghostmode_build/$(EXEC_NAME)_x86_64
-	lipo -create -output "$(MACOS_DIR)/$(EXEC_NAME)" /tmp/ghostmode_build/$(EXEC_NAME)_arm64 /tmp/ghostmode_build/$(EXEC_NAME)_x86_64
-	rm -rf /tmp/ghostmode_build
+	mkdir -p $(BUILD_DIR)
+	swiftc -target arm64-apple-macos$(MIN_MACOS) -O -sdk $(SDK_PATH) $(SWIFT_SOURCES) -o $(BUILD_DIR)/$(EXEC_NAME)_arm64
+	swiftc -target x86_64-apple-macos$(MIN_MACOS) -O -sdk $(SDK_PATH) $(SWIFT_SOURCES) -o $(BUILD_DIR)/$(EXEC_NAME)_x86_64
+	lipo -create -output "$(MACOS_DIR)/$(EXEC_NAME)" $(BUILD_DIR)/$(EXEC_NAME)_arm64 $(BUILD_DIR)/$(EXEC_NAME)_x86_64
+	rm -rf $(BUILD_DIR)
 	@echo "Copying configuration files..."
 	cp Info.plist "$(CONTENTS_DIR)/Info.plist"
 	cp ghostmode_setup.sh "$(RESOURCES_DIR)/ghostmode_setup.sh"
@@ -37,9 +48,15 @@ $(APP_BUNDLE): main.swift Info.plist ghostmode_setup.sh AppIcon.icns
 	codesign --force --deep --sign - "$(APP_BUNDLE)"
 	@echo "Successfully built Universal $(APP_BUNDLE) by Arpit!"
 
+test: $(TEST_SOURCES)
+	@echo "Compiling and running Ghost Mode unit tests..."
+	mkdir -p $(BUILD_DIR)
+	swiftc -target $(HOST_ARCH)-apple-macos$(MIN_MACOS) -sdk $(SDK_PATH) $(TEST_SOURCES) -o $(TEST_BIN)
+	$(TEST_BIN)
+
 clean:
 	@echo "Cleaning build artifacts..."
-	rm -rf "$(APP_BUNDLE)" "$(DMG_NAME)" dist/ /tmp/ghostmode_build
+	rm -rf "$(APP_BUNDLE)" "$(DMG_NAME)" dist/ $(BUILD_DIR) $(TEST_BIN)
 
 install: all
 	@echo "Installing Ghost Mode to /Applications..."
@@ -60,10 +77,12 @@ dmg: all
 
 uninstall:
 	@echo "Uninstalling Ghost Mode..."
-	pkill -f "GhostMode" || true
+	pkill -TERM -x "GhostMode" || true
+	sleep 0.5
+	pkill -KILL -x "GhostMode" || true
 	rm -rf "/Applications/$(APP_BUNDLE)"
 	rm -f ~/Library/LaunchAgents/com.arpit.ghostmode.plist
 	@echo "To remove sudoers privilege rule: sudo rm -f /private/etc/sudoers.d/ghostmode"
 	@echo "Ghost Mode uninstalled successfully."
 
-.PHONY: all clean install dmg uninstall
+.PHONY: all clean install dmg uninstall test
