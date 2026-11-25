@@ -61,8 +61,11 @@ public final class Preferences: ObservableObject {
         defaults.set(true, forKey: Keys.didMigrateAudioWhitelistV2)
     }
 
-    private func notifyChange() {
+    private func willChange() {
         objectWillChange.send()
+    }
+
+    private func didChange() {
         NotificationCenter.default.post(name: Self.didChangeNotification, object: self)
     }
 
@@ -72,8 +75,9 @@ public final class Preferences: ObservableObject {
             return val > 0 ? val : 3600
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.defaultDuration)
+            didChange()
         }
     }
 
@@ -83,8 +87,9 @@ public final class Preferences: ObservableObject {
             return defaults.bool(forKey: Keys.turnOffScreenOnLidClose)
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.turnOffScreenOnLidClose)
+            didChange()
         }
     }
 
@@ -95,8 +100,9 @@ public final class Preferences: ObservableObject {
             return val > 0 ? val : 10
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.batteryCutoffThreshold)
+            didChange()
         }
     }
 
@@ -106,17 +112,19 @@ public final class Preferences: ObservableObject {
             return defaults.bool(forKey: Keys.batteryCutoffEnabled)
         }
         set {
-            notifyChange()
+            willChange()
             // Intentionally preserve batteryCutoffThreshold when toggling off.
             defaults.set(newValue, forKey: Keys.batteryCutoffEnabled)
+            didChange()
         }
     }
 
     public var acOnlyModeEnabled: Bool {
         get { defaults.bool(forKey: Keys.acOnlyModeEnabled) }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.acOnlyModeEnabled)
+            didChange()
         }
     }
 
@@ -126,8 +134,9 @@ public final class Preferences: ObservableObject {
             return defaults.bool(forKey: Keys.thermalGuardEnabled)
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.thermalGuardEnabled)
+            didChange()
         }
     }
 
@@ -137,8 +146,9 @@ public final class Preferences: ObservableObject {
             return defaults.bool(forKey: Keys.showCountdownInMenuBar)
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.showCountdownInMenuBar)
+            didChange()
         }
     }
 
@@ -148,32 +158,36 @@ public final class Preferences: ObservableObject {
             return defaults.bool(forKey: Keys.soundNotificationsEnabled)
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.soundNotificationsEnabled)
+            didChange()
         }
     }
 
     public var showInDock: Bool {
         get { defaults.bool(forKey: Keys.showInDock) }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.showInDock)
+            didChange()
         }
     }
 
     public var hasSeenWelcome: Bool {
         get { defaults.bool(forKey: Keys.hasSeenWelcome) }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.hasSeenWelcome)
+            didChange()
         }
     }
 
     public var appFreezeOnLidCloseEnabled: Bool {
         get { defaults.bool(forKey: Keys.appFreezeOnLidCloseEnabled) }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.appFreezeOnLidCloseEnabled)
+            didChange()
         }
     }
 
@@ -183,16 +197,18 @@ public final class Preferences: ObservableObject {
             return defaults.bool(forKey: Keys.keepAudioActiveOnLidClose)
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.keepAudioActiveOnLidClose)
+            didChange()
         }
     }
 
     public var appFreezeWhitelist: [String] {
         get { defaults.stringArray(forKey: Keys.appFreezeWhitelist) ?? Self.defaultAppFreezeWhitelist }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.appFreezeWhitelist)
+            didChange()
         }
     }
 
@@ -205,24 +221,27 @@ public final class Preferences: ObservableObject {
             return mode
         }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue.rawValue, forKey: Keys.audioFilterMode)
+            didChange()
         }
     }
 
     public var audioBlockedApps: [String] {
         get { defaults.stringArray(forKey: Keys.audioBlockedApps) ?? [] }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.audioBlockedApps)
+            didChange()
         }
     }
 
     public var audioAllowedApps: [String] {
         get { defaults.stringArray(forKey: Keys.audioAllowedApps) ?? [] }
         set {
-            notifyChange()
+            willChange()
             defaults.set(newValue, forKey: Keys.audioAllowedApps)
+            didChange()
         }
     }
 }
