@@ -14,6 +14,7 @@ MACOS_DIR = $(CONTENTS_DIR)/MacOS
 RESOURCES_DIR = $(CONTENTS_DIR)/Resources
 SDK_PATH = $(shell xcrun --show-sdk-path --sdk macosx)
 MIN_MACOS = 12.0
+X86_64_MIN_MACOS = $(shell lipo -archs "$$(dirname $$(xcrun --find swiftc))/../lib/swift/macosx/libswiftCompatibility56.a" 2>/dev/null | grep -q x86_64 && echo $(MIN_MACOS) || echo 14.0)
 HOST_ARCH = $(shell uname -m)
 DMG_NAME = GhostMode-Installer.dmg
 SWIFT_SOURCES = $(wildcard Sources/*.swift)
@@ -33,10 +34,10 @@ $(APP_BUNDLE): $(SWIFT_SOURCES) Info.plist ghostmode_setup.sh AppIcon.icns
 	@echo "Creating app bundle structure for Ghost Mode (by Arpit)..."
 	mkdir -p "$(MACOS_DIR)"
 	mkdir -p "$(RESOURCES_DIR)"
-	@echo "Compiling Universal Swift binary (arm64 + x86_64 for macOS $(MIN_MACOS)+)..."
+	@echo "Compiling Universal Swift binary (arm64 macOS $(MIN_MACOS)+ and x86_64 macOS $(X86_64_MIN_MACOS)+)..."
 	mkdir -p $(BUILD_DIR)
 	swiftc -target arm64-apple-macos$(MIN_MACOS) -O -sdk $(SDK_PATH) $(SWIFT_SOURCES) -o $(BUILD_DIR)/$(EXEC_NAME)_arm64
-	swiftc -target x86_64-apple-macos$(MIN_MACOS) -O -sdk $(SDK_PATH) $(SWIFT_SOURCES) -o $(BUILD_DIR)/$(EXEC_NAME)_x86_64
+	swiftc -target x86_64-apple-macos$(X86_64_MIN_MACOS) -O -sdk $(SDK_PATH) $(SWIFT_SOURCES) -o $(BUILD_DIR)/$(EXEC_NAME)_x86_64
 	lipo -create -output "$(MACOS_DIR)/$(EXEC_NAME)" $(BUILD_DIR)/$(EXEC_NAME)_arm64 $(BUILD_DIR)/$(EXEC_NAME)_x86_64
 	rm -rf $(BUILD_DIR)
 	@echo "Copying configuration files..."
@@ -61,7 +62,6 @@ clean:
 install: all
 	@echo "Installing Ghost Mode to /Applications..."
 	rm -rf "/Applications/$(APP_BUNDLE)"
-	rm -rf "/Applications/LidSentry.app"
 	cp -R "$(APP_BUNDLE)" "/Applications/"
 	@echo "Installed successfully to /Applications/$(APP_BUNDLE)!"
 

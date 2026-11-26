@@ -1,11 +1,13 @@
 # Xcode / Swift Build Artifacts
 *.app/
 *.dmg
+*.dmg.sha256
 *.dSYM/
 *.o
 *.swiftdoc
 *.swiftmodule
 *.abi.json
+*.iconset/
 dist/
 /tmp/ghostmode_build/
 
@@ -14,6 +16,10 @@ dist/
 *.tmp
 *.orig
 *~
+archive_backup*.zip
+
+# Local architecture / planning notes
+Ghost/
 
 # macOS System Files
 .DS_Store
@@ -23,7 +29,9 @@ dist/
 .Spotlight-V100
 .Trashes
 
-# IDE / Editor folders
+# IDE / Agent / Editor folders
 .vscode/
 .idea/
 .agents/
+.claude/
+.gemini/

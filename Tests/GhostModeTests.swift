@@ -19,6 +19,8 @@ struct GhostModeTestRunner {
         testPowerSnapshotParser()
         testSafetyEvaluator()
         testAppFreezerPureHelpers()
+        testSudoersPolicyAndPrivilegedResult()
+        testSudoFeatureAvailability()
 
         print("")
         print("Ghost Mode Unit Tests Summary: \(passed) passed, \(failed) failed")
@@ -181,6 +183,9 @@ struct GhostModeTestRunner {
             expectEqual(prefs.audioFilterMode, .allowAllExceptBlocked, "default audioFilterMode")
             expectEqual(prefs.audioBlockedApps, [], "default audioBlockedApps")
             expectEqual(prefs.audioAllowedApps, [], "default audioAllowedApps")
+            expectEqual(prefs.preventDisplaySleep, false, "default preventDisplaySleep")
+            expectEqual(prefs.autoClosePopoverOnStart, false, "default autoClosePopoverOnStart")
+            expectEqual(prefs.autoStartOnLaunch, false, "default autoStartOnLaunch")
 
             prefs.batteryCutoffThreshold = 15
             prefs.batteryCutoffEnabled = false
@@ -195,35 +200,16 @@ struct GhostModeTestRunner {
             expectEqual(prefs.batteryCutoffThreshold, 15, "batteryCutoffThreshold still 15 on re-enable")
         }
 
-        // 2. Legacy empty audioAppWhitelist migration -> .allowAllExceptBlocked
-        do {
-            let suiteName = "com.arpit.GhostMode.tests.migrateEmpty.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
-            defaults.removePersistentDomain(forName: suiteName)
-            defer { defaults.removePersistentDomain(forName: suiteName) }
-
-            defaults.set([String](), forKey: Preferences.Keys.legacyAudioAppWhitelist)
-            let prefs = Preferences(defaults: defaults)
-            expectEqual(prefs.audioFilterMode, .allowAllExceptBlocked, "empty legacy whitelist migrates to allowAllExceptBlocked")
-            expectEqual(prefs.audioAllowedApps, [], "empty legacy whitelist keeps audioAllowedApps empty")
-            expectEqual(defaults.bool(forKey: Preferences.Keys.didMigrateAudioWhitelistV2), true, "migration flag set for empty")
+        // 2. Default Preferences reset check on isolated UserDefaults suite
+        withIsolatedPreferences { prefs, _ in
+            prefs.audioFilterMode = .allowOnlySelected
+            prefs.audioAllowedApps = ["com.spotify.client"]
+            prefs.resetToDefaults()
+            expectEqual(prefs.audioFilterMode, .allowAllExceptBlocked, "reset restores allowAllExceptBlocked")
+            expectEqual(prefs.audioAllowedApps, [], "reset clears audioAllowedApps")
         }
 
-        // 3. Legacy non-empty audioAppWhitelist migration -> .allowOnlySelected + audioAllowedApps
-        do {
-            let suiteName = "com.arpit.GhostMode.tests.migrateSelected.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
-            defaults.removePersistentDomain(forName: suiteName)
-            defer { defaults.removePersistentDomain(forName: suiteName) }
-
-            defaults.set(["com.spotify.client"], forKey: Preferences.Keys.legacyAudioAppWhitelist)
-            let prefs = Preferences(defaults: defaults)
-            expectEqual(prefs.audioFilterMode, .allowOnlySelected, "non-empty legacy whitelist migrates to allowOnlySelected")
-            expectEqual(prefs.audioAllowedApps, ["com.spotify.client"], "non-empty legacy whitelist migrates bundle IDs")
-            expectEqual(defaults.bool(forKey: Preferences.Keys.didMigrateAudioWhitelistV2), true, "migration flag set for non-empty")
-        }
-
-        // 4. didChangeNotification fires AFTER defaults reflects the new value
+        // 3. didChangeNotification fires AFTER defaults reflects the new value
         withIsolatedPreferences { prefs, defaults in
             var observedAcOnlyDuringNotification: Bool?
             var observedThresholdDuringNotification: Int?
@@ -249,6 +235,68 @@ struct GhostModeTestRunner {
             expectEqual(notificationCount, 2, "didChangeNotification count")
             expectEqual(observedAcOnlyDuringNotification, true, "defaults reflects acOnlyModeEnabled when notification fires")
             expectEqual(observedThresholdDuringNotification, 25, "defaults reflects batteryCutoffThreshold when notification fires")
+        }
+
+        // 5. New preferences persistence & resetToDefaults() preserving hasSeenWelcome
+        withIsolatedPreferences { prefs, defaults in
+            prefs.hasSeenWelcome = true
+            prefs.defaultDuration = 7200
+            prefs.turnOffScreenOnLidClose = false
+            prefs.batteryCutoffThreshold = 25
+            prefs.batteryCutoffEnabled = false
+            prefs.acOnlyModeEnabled = true
+            prefs.thermalGuardEnabled = false
+            prefs.showCountdownInMenuBar = false
+            prefs.soundNotificationsEnabled = false
+            prefs.showInDock = true
+            prefs.appFreezeOnLidCloseEnabled = true
+            prefs.keepAudioActiveOnLidClose = false
+            prefs.appFreezeWhitelist = ["com.example.app"]
+            prefs.audioFilterMode = .allowOnlySelected
+            prefs.audioBlockedApps = ["com.blocked.app"]
+            prefs.audioAllowedApps = ["com.allowed.app"]
+            prefs.preventDisplaySleep = true
+            prefs.autoClosePopoverOnStart = true
+            prefs.autoStartOnLaunch = true
+
+            expectEqual(prefs.preventDisplaySleep, true, "preventDisplaySleep persists true")
+            expectEqual(prefs.autoClosePopoverOnStart, true, "autoClosePopoverOnStart persists true")
+            expectEqual(prefs.autoStartOnLaunch, true, "autoStartOnLaunch persists true")
+
+            var resetNotificationCount = 0
+            let token = NotificationCenter.default.addObserver(
+                forName: Preferences.didChangeNotification,
+                object: prefs,
+                queue: nil
+            ) { _ in
+                resetNotificationCount += 1
+            }
+            defer { NotificationCenter.default.removeObserver(token) }
+
+            prefs.resetToDefaults()
+
+            expectEqual(resetNotificationCount, 1, "resetToDefaults posts didChangeNotification")
+            expectEqual(prefs.hasSeenWelcome, true, "resetToDefaults preserves hasSeenWelcome")
+            expectEqual(prefs.defaultDuration, 3600, "resetToDefaults restores defaultDuration")
+            expectEqual(prefs.turnOffScreenOnLidClose, true, "resetToDefaults restores turnOffScreenOnLidClose")
+            expectEqual(prefs.batteryCutoffThreshold, 10, "resetToDefaults restores batteryCutoffThreshold")
+            expectEqual(prefs.batteryCutoffEnabled, true, "resetToDefaults restores batteryCutoffEnabled")
+            expectEqual(prefs.acOnlyModeEnabled, false, "resetToDefaults restores acOnlyModeEnabled")
+            expectEqual(prefs.thermalGuardEnabled, true, "resetToDefaults restores thermalGuardEnabled")
+            expectEqual(prefs.showCountdownInMenuBar, true, "resetToDefaults restores showCountdownInMenuBar")
+            expectEqual(prefs.soundNotificationsEnabled, true, "resetToDefaults restores soundNotificationsEnabled")
+            expectEqual(prefs.showInDock, false, "resetToDefaults restores showInDock")
+            expectEqual(prefs.appFreezeOnLidCloseEnabled, false, "resetToDefaults restores appFreezeOnLidCloseEnabled")
+            expectEqual(prefs.keepAudioActiveOnLidClose, true, "resetToDefaults restores keepAudioActiveOnLidClose")
+            expectEqual(prefs.appFreezeWhitelist, Preferences.defaultAppFreezeWhitelist, "resetToDefaults restores appFreezeWhitelist")
+            expectEqual(prefs.audioFilterMode, .allowAllExceptBlocked, "resetToDefaults restores audioFilterMode")
+            expectEqual(prefs.audioBlockedApps, [], "resetToDefaults restores audioBlockedApps")
+            expectEqual(prefs.audioAllowedApps, [], "resetToDefaults restores audioAllowedApps")
+            expectEqual(prefs.preventDisplaySleep, false, "resetToDefaults restores preventDisplaySleep")
+            expectEqual(prefs.autoClosePopoverOnStart, false, "resetToDefaults restores autoClosePopoverOnStart")
+            expectEqual(prefs.autoStartOnLaunch, false, "resetToDefaults restores autoStartOnLaunch")
+            expectNil(defaults.object(forKey: Preferences.Keys.preventDisplaySleep), "resetToDefaults removes preventDisplaySleep key")
+            expectNil(defaults.object(forKey: Preferences.Keys.defaultDuration), "resetToDefaults removes defaultDuration key")
         }
     }
 
@@ -325,6 +373,103 @@ struct GhostModeTestRunner {
 
         let parsedEmpty = PowerSnapshotParser.parseBatteryStatus(sources: [], providingPowerSource: nil)
         expectNil(parsedEmpty, "parseBatteryStatus returns nil for empty sources")
+
+        // timeRemainingMinutes parsing: discharging (kIOPSTimeToEmptyKey) & charging (kIOPSTimeToFullChargeKey)
+        let dischargingWithTime: [String: Any] = [
+            kIOPSTypeKey: kIOPSInternalBatteryType,
+            kIOPSIsPresentKey: true,
+            kIOPSCurrentCapacityKey: 60,
+            kIOPSPowerSourceStateKey: kIOPSBatteryPowerValue,
+            kIOPSIsChargingKey: false,
+            kIOPSTimeToEmptyKey: 102,
+            kIOPSTimeToFullChargeKey: 99
+        ]
+        let parsedDischargingWithTime = PowerSnapshotParser.parseBatteryStatus(
+            sources: [dischargingWithTime],
+            providingPowerSource: kIOPSBatteryPowerValue
+        )
+        expectEqual(
+            parsedDischargingWithTime?.timeRemainingMinutes,
+            102,
+            "parseBatteryStatus parses kIOPSTimeToEmptyKey when discharging"
+        )
+
+        let chargingWithTime: [String: Any] = [
+            kIOPSTypeKey: kIOPSInternalBatteryType,
+            kIOPSIsPresentKey: true,
+            kIOPSCurrentCapacityKey: 75,
+            kIOPSPowerSourceStateKey: kIOPSACPowerValue,
+            kIOPSIsChargingKey: true,
+            kIOPSTimeToEmptyKey: 300,
+            kIOPSTimeToFullChargeKey: 45
+        ]
+        let parsedChargingWithTime = PowerSnapshotParser.parseBatteryStatus(
+            sources: [chargingWithTime],
+            providingPowerSource: kIOPSACPowerValue
+        )
+        expectEqual(
+            parsedChargingWithTime?.timeRemainingMinutes,
+            45,
+            "parseBatteryStatus parses kIOPSTimeToFullChargeKey when charging"
+        )
+
+        let dischargingBoundaryMax: [String: Any] = [
+            kIOPSTypeKey: kIOPSInternalBatteryType,
+            kIOPSIsPresentKey: true,
+            kIOPSCurrentCapacityKey: 95,
+            kIOPSPowerSourceStateKey: kIOPSBatteryPowerValue,
+            kIOPSIsChargingKey: false,
+            kIOPSTimeToEmptyKey: 2400
+        ]
+        expectEqual(
+            PowerSnapshotParser.parseBatteryStatus(sources: [dischargingBoundaryMax], providingPowerSource: nil)?.timeRemainingMinutes,
+            2400,
+            "parseBatteryStatus accepts upper bound 2400"
+        )
+
+        for invalidValue in [-1, 0, 2401] {
+            let invalidDischarging: [String: Any] = [
+                kIOPSTypeKey: kIOPSInternalBatteryType,
+                kIOPSIsPresentKey: true,
+                kIOPSCurrentCapacityKey: 50,
+                kIOPSPowerSourceStateKey: kIOPSBatteryPowerValue,
+                kIOPSIsChargingKey: false,
+                kIOPSTimeToEmptyKey: invalidValue
+            ]
+            expectNil(
+                PowerSnapshotParser.parseBatteryStatus(sources: [invalidDischarging], providingPowerSource: nil)?.timeRemainingMinutes,
+                "parseBatteryStatus ignores out-of-range timeRemainingMinutes \(invalidValue)"
+            )
+        }
+
+        let acNotChargingWithStaleEmpty: [String: Any] = [
+            kIOPSTypeKey: kIOPSInternalBatteryType,
+            kIOPSIsPresentKey: true,
+            kIOPSCurrentCapacityKey: 100,
+            kIOPSPowerSourceStateKey: kIOPSACPowerValue,
+            kIOPSIsChargingKey: false,
+            kIOPSTimeToEmptyKey: 120
+        ]
+        expectNil(
+            PowerSnapshotParser.parseBatteryStatus(sources: [acNotChargingWithStaleEmpty], providingPowerSource: kIOPSACPowerValue)?.timeRemainingMinutes,
+            "parseBatteryStatus ignores kIOPSTimeToEmptyKey when on AC and not charging"
+        )
+
+        // Default model fields remain backwards-compatible
+        let defaultSnapshot = SystemSnapshot(
+            hasLid: true,
+            isLidClosed: false,
+            battery: nil,
+            thermalState: .nominal,
+            kernelSleepDisabled: false,
+            sudoConfigured: false
+        )
+        expectEqual(defaultSnapshot.frozenAppCount, 0, "SystemSnapshot defaults frozenAppCount to 0")
+
+        let unfrozenApp = AppEntry(id: "1", pid: 100, name: "App", bundleIdentifier: "com.test.app")
+        let frozenApp = AppEntry(id: "1", pid: 100, name: "App", bundleIdentifier: "com.test.app", isFrozen: true)
+        expectEqual(unfrozenApp.isFrozen, false, "AppEntry defaults isFrozen to false")
+        expect(unfrozenApp != frozenApp, "AppEntry equality considers isFrozen")
     }
 
     // MARK: - SafetyEvaluator
@@ -503,8 +648,51 @@ struct GhostModeTestRunner {
             true,
             "allowOnlySelected allows selected bundleID"
         )
+        expectEqual(
+            AppFreezer.isAudioAllowed(
+                bundleID: "com.apple.Safari",
+                appName: "Safari",
+                mode: .allowOnlySelected,
+                blockedApps: [],
+                allowedApps: ["com.spotify.client", "com.apple.Safari"]
+            ),
+            true,
+            "allowOnlySelected allows Safari alongside Spotify"
+        )
+        expectEqual(
+            AppFreezer.isAudioAllowed(
+                bundleID: "com.apple.Safari",
+                appName: "Safari",
+                mode: .allowAllExceptBlocked,
+                blockedApps: ["com.apple.Safari"],
+                allowedApps: []
+            ),
+            false,
+            "allowAllExceptBlocked blocks Safari when listed in blockedApps"
+        )
+        expectEqual(
+            AppFreezer.isAudioAllowed(
+                bundleID: "com.spotify.client",
+                appName: "Spotify",
+                mode: .allowAllExceptBlocked,
+                blockedApps: ["com.apple.Safari"],
+                allowedApps: []
+            ),
+            true,
+            "allowAllExceptBlocked allows Spotify when only Safari is blocked"
+        )
 
-        // System executable path protection checks
+        // System executable path protection checks (including Cryptex prefixes)
+        expectEqual(
+            AppFreezer.normalizeExecutablePath("/System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU"),
+            "/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU",
+            "normalizeExecutablePath strips Preboot Cryptex OS prefix"
+        )
+        expectEqual(
+            AppFreezer.normalizeExecutablePath("/System/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari"),
+            "/System/Applications/Safari.app/Contents/MacOS/Safari",
+            "normalizeExecutablePath strips System Cryptex App prefix"
+        )
         expectEqual(
             AppFreezer.isProtectedSystemExecutablePath("/usr/sbin/coreaudiod"),
             true,
@@ -521,6 +709,36 @@ struct GhostModeTestRunner {
             "protects /System/Library/CoreServices/Finder.app/Contents/MacOS/Finder"
         )
         expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU"),
+            true,
+            "protects Cryptex OS /System/Library WebKit.GPU XPC"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/System/Volumes/Preboot/Cryptexes/Incoming/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"),
+            true,
+            "protects Cryptex Incoming/OS /System/Library WebKit.WebContent XPC"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/System/Cryptexes/App/usr/libexec/trustd"),
+            true,
+            "protects Cryptex App /usr/libexec path"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/System/Cryptexes/OS/usr/libexec/somehelper"),
+            true,
+            "protects Cryptex OS /usr/libexec path"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/System/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari"),
+            false,
+            "does not treat Cryptex Safari.app as protected system daemon path"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari"),
+            false,
+            "does not treat Preboot Cryptex Safari.app as protected system daemon path"
+        )
+        expectEqual(
             AppFreezer.isProtectedSystemExecutablePath("/Applications/Safari.app/Contents/MacOS/Safari"),
             false,
             "does not treat /Applications/Safari.app as protected system daemon path"
@@ -529,6 +747,116 @@ struct GhostModeTestRunner {
             AppFreezer.isProtectedSystemExecutablePath("/System/Applications/Music.app/Contents/MacOS/Music"),
             false,
             "does not treat /System/Applications/Music.app as protected system daemon path"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/bin/zsh"),
+            true,
+            "protects core /bin shell commands from freezing"
+        )
+        expectEqual(
+            AppFreezer.isProtectedSystemExecutablePath("/Library/Apple/System/Library/CoreServices/XProtect.app/Contents/MacOS/XProtect"),
+            true,
+            "protects /Library/Apple system components from freezing"
+        )
+
+        // Core protected bundle identifier checks
+        expect(
+            !AppFreezer.shared.systemProtectedIdentifiers.contains("com.google.antigravity-ide"),
+            "user IDE apps such as Antigravity IDE are shown in app lists and user-configurable"
+        )
+        expect(
+            AppFreezer.shared.isProtectedSystemBundleIdentifier("com.apple.SecurityAgent"),
+            "protects core macOS SecurityAgent"
+        )
+        expect(
+            AppFreezer.shared.isProtectedSystemBundleIdentifier("com.apple.UserNotificationCenter"),
+            "protects core macOS UserNotificationCenter"
+        )
+        expect(
+            AppFreezer.shared.isProtectedSystemBundleIdentifier("com.apple.security.KeychainCircleNotification"),
+            "protects com.apple.security.* system components"
+        )
+
+        // Pure freeze policy checks
+        expectEqual(
+            AppFreezer.shouldFreezeApp(
+                bundleID: "com.apple.Safari",
+                appName: "Safari",
+                executablePath: "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari",
+                systemProtectedIdentifiers: ["com.apple.finder"],
+                whitelist: [],
+                keepAudio: true,
+                isProducingAudio: true,
+                audioMode: .allowOnlySelected,
+                blockedAudioApps: [],
+                allowedAudioApps: ["com.apple.Safari", "com.spotify.client"]
+            ),
+            false,
+            "shouldFreezeApp keeps Cryptex Safari alive when playing allowed audio"
+        )
+        expectEqual(
+            AppFreezer.shouldFreezeApp(
+                bundleID: "com.apple.Safari",
+                appName: "Safari",
+                executablePath: "/System/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari",
+                systemProtectedIdentifiers: ["com.apple.finder"],
+                whitelist: [],
+                keepAudio: true,
+                isProducingAudio: false,
+                audioMode: .allowOnlySelected,
+                blockedAudioApps: [],
+                allowedAudioApps: ["com.apple.Safari"]
+            ),
+            true,
+            "shouldFreezeApp freezes idle non-whitelisted Safari when not playing audio"
+        )
+        expectEqual(
+            AppFreezer.shouldFreezeApp(
+                bundleID: "com.apple.dock",
+                appName: "Dock",
+                executablePath: "/System/Library/CoreServices/Dock.app/Contents/MacOS/Dock",
+                systemProtectedIdentifiers: AppFreezer.shared.systemProtectedIdentifiers,
+                whitelist: [],
+                keepAudio: false,
+                isProducingAudio: false,
+                audioMode: .allowAllExceptBlocked,
+                blockedAudioApps: [],
+                allowedAudioApps: []
+            ),
+            false,
+            "shouldFreezeApp never freezes systemProtectedIdentifiers"
+        )
+        expectEqual(
+            AppFreezer.shouldFreezeApp(
+                bundleID: "com.google.antigravity-ide",
+                appName: "Antigravity IDE",
+                executablePath: "/Applications/Antigravity.app/Contents/MacOS/Electron",
+                systemProtectedIdentifiers: AppFreezer.shared.systemProtectedIdentifiers,
+                whitelist: [],
+                keepAudio: false,
+                isProducingAudio: false,
+                audioMode: .allowAllExceptBlocked,
+                blockedAudioApps: [],
+                allowedAudioApps: []
+            ),
+            true,
+            "shouldFreezeApp freezes non-whitelisted user apps like Antigravity IDE unless whitelisted"
+        )
+        expectEqual(
+            AppFreezer.shouldFreezeApp(
+                bundleID: "com.apple.Terminal",
+                appName: "Terminal",
+                executablePath: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal",
+                systemProtectedIdentifiers: [],
+                whitelist: ["com.apple.Terminal"],
+                keepAudio: false,
+                isProducingAudio: false,
+                audioMode: .allowAllExceptBlocked,
+                blockedAudioApps: [],
+                allowedAudioApps: []
+            ),
+            false,
+            "shouldFreezeApp never freezes whitelisted apps"
         )
 
         // PID reuse & stopped status resume checks
@@ -572,6 +900,145 @@ struct GhostModeTestRunner {
             ),
             false,
             "shouldResumeProcess returns false when process is not stopped"
+        )
+    }
+
+    // MARK: - SudoersPolicy & PrivilegedCommandResult
+
+    private static func testSudoersPolicyAndPrivilegedResult() {
+        expectEqual(
+            SudoersPolicy.ghostModeRulePath,
+            "/private/etc/sudoers.d/ghostmode",
+            "ghostModeRulePath matches expected sudoers path"
+        )
+        expectEqual(
+            SudoersPolicy.managedRulePaths,
+            ["/private/etc/sudoers.d/ghostmode"],
+            "managedRulePaths includes ghostmode sudoers rule"
+        )
+
+        expectEqual(AppMetadata.name, "Ghost Mode", "AppMetadata.name is Ghost Mode")
+        expectEqual(AppMetadata.version, "2.1", "AppMetadata.version matches current release")
+        let defaultRevoke = SudoersPolicy.revokeCommand()
+        expectEqual(
+            defaultRevoke,
+            "/bin/rm -f /private/etc/sudoers.d/ghostmode",
+            "default revokeCommand removes ghostmode sudoers file"
+        )
+        expect(
+            defaultRevoke.contains("/private/etc/sudoers.d/ghostmode"),
+            "default revokeCommand references ghostmode rule path"
+        )
+
+        expectEqual(
+            SudoersPolicy.revokeCommand(paths: ["/tmp/custom path", "/tmp/it's_a_test"]),
+            "/bin/rm -f '/tmp/custom path' '/tmp/it'\\''s_a_test'",
+            "revokeCommand quotes spaces and escapes single quotes safely"
+        )
+        expectEqual(
+            SudoersPolicy.revokeCommand(paths: []),
+            "/bin/rm -f",
+            "revokeCommand handles empty path list cleanly"
+        )
+
+        let successResult = PrivilegedCommandResult(success: true, cancelled: false, errorMessage: nil)
+        let cancelledResult = PrivilegedCommandResult(success: false, cancelled: true, errorMessage: nil)
+        let failedResult = PrivilegedCommandResult(success: false, cancelled: false, errorMessage: "Auth failed")
+
+        expectEqual(successResult.success, true, "success result marks success == true")
+        expectEqual(successResult.cancelled, false, "success result marks cancelled == false")
+        expectNil(successResult.errorMessage, "success result has nil errorMessage")
+
+        expectEqual(cancelledResult.success, false, "cancelled result marks success == false")
+        expectEqual(cancelledResult.cancelled, true, "cancelled result marks cancelled == true")
+        expectNil(cancelledResult.errorMessage, "cancelled result has nil errorMessage")
+
+        expectEqual(failedResult.success, false, "failed result marks success == false")
+        expectEqual(failedResult.cancelled, false, "failed result marks cancelled == false")
+        expectEqual(failedResult.errorMessage, "Auth failed", "failed result preserves errorMessage")
+        expect(successResult != failedResult, "PrivilegedCommandResult Equatable distinguishes results")
+        expectEqual(
+            failedResult,
+            PrivilegedCommandResult(success: false, cancelled: false, errorMessage: "Auth failed"),
+            "PrivilegedCommandResult Equatable matches identical values"
+        )
+
+        // Hardened username & command builder security checks
+        expectEqual(SudoersPolicy.validatedUsername("arpit"), "arpit", "validates normal username")
+        expectEqual(SudoersPolicy.validatedUsername("first.last_2-a"), "first.last_2-a", "validates safe punctuation username")
+        expectNil(SudoersPolicy.validatedUsername(""), "rejects empty username")
+        expectNil(SudoersPolicy.validatedUsername("root"), "rejects root")
+        expectNil(SudoersPolicy.validatedUsername("loginwindow"), "rejects loginwindow")
+        expectNil(SudoersPolicy.validatedUsername("_mbsetupuser"), "rejects _mbsetupuser")
+        expectNil(SudoersPolicy.validatedUsername("-evil"), "rejects leading hyphen")
+        expectNil(SudoersPolicy.validatedUsername(".evil"), "rejects leading dot")
+        expectNil(SudoersPolicy.validatedUsername("arpit;rm -rf /"), "rejects shell metacharacters")
+        expectNil(SudoersPolicy.validatedUsername("arpit$(id)"), "rejects command substitution")
+        expectNil(SudoersPolicy.validatedUsername(String(repeating: "a", count: 65)), "rejects >64 char username")
+
+        let installCmd = SudoersPolicy.installCommand(forUsername: "arpit") ?? ""
+        expect(!installCmd.isEmpty, "installCommand builds command for valid username")
+        expect(installCmd.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"), "installCommand locks down PATH")
+        expect(installCmd.contains("/usr/bin/mktemp -d /private/etc/sudoers.d/.ghostmode."), "installCommand stages inside root-owned sudoers.d")
+        expect(installCmd.contains("/usr/sbin/visudo -cf"), "installCommand validates with absolute visudo")
+        expect(installCmd.contains("[ ! -L /private/etc/sudoers.d ]"), "installCommand rejects sudoers.d symlink")
+        expect(installCmd.contains("GHOSTMODE_PMSET = /usr/bin/pmset disablesleep 0, /usr/bin/pmset disablesleep 1, /usr/bin/pmset -g"), "installCommand enforces exact least-privilege pmset rules")
+        expectNil(SudoersPolicy.installCommand(forUsername: "arpit;id"), "installCommand rejects injection username")
+
+        let hardenedRevoke = SudoersPolicy.hardenedRevokeCommand()
+        expect(hardenedRevoke.contains("PATH=/usr/bin:/bin:/usr/sbin:/sbin"), "hardenedRevokeCommand locks down PATH")
+        expect(hardenedRevoke.contains("[ ! -L /private/etc/sudoers.d ]"), "hardenedRevokeCommand rejects sudoers.d symlink")
+        expect(hardenedRevoke.contains("/bin/rm -f /private/etc/sudoers.d/ghostmode"), "hardenedRevokeCommand removes ghostmode rule file")
+
+        expectEqual(
+            PrivilegedAction.setLidSleepDisabled(true).resolvedCommand(),
+            "/usr/bin/pmset disablesleep 1",
+            "PrivilegedAction.setLidSleepDisabled(true) resolves exact pmset command"
+        )
+        expectEqual(
+            PrivilegedAction.setLidSleepDisabled(false).resolvedCommand(),
+            "/usr/bin/pmset disablesleep 0",
+            "PrivilegedAction.setLidSleepDisabled(false) resolves exact pmset command"
+        )
+        expectEqual(
+            PrivilegedAction.revokePasswordlessSudo.resolvedCommand(),
+            hardenedRevoke,
+            "PrivilegedAction.revokePasswordlessSudo resolves hardened revoke command"
+        )
+        expectNil(
+            PrivilegedAction.configurePasswordlessSudo(username: "bad user").resolvedCommand(),
+            "PrivilegedAction.configurePasswordlessSudo rejects invalid username"
+        )
+    }
+
+    // MARK: - SudoFeatureAvailability
+
+    private static func testSudoFeatureAvailability() {
+        let summary = SudoFeatureAvailability.lackingFeaturesSummary()
+        expect(!summary.isEmpty, "lackingFeaturesSummary is non-empty")
+        expect(summary.contains("Screen Off"), "lackingFeaturesSummary mentions Screen Off")
+        expect(summary.contains("App Freeze"), "lackingFeaturesSummary mentions App Freeze")
+        expect(summary.contains("prompts"), "lackingFeaturesSummary mentions start/stop prompts")
+
+        expectEqual(
+            SudoFeatureAvailability.effectiveLidFeatureToggle(storedValue: true, sudoConfigured: false),
+            false,
+            "effectiveLidFeatureToggle returns false when sudo is not configured even if storedValue is true"
+        )
+        expectEqual(
+            SudoFeatureAvailability.effectiveLidFeatureToggle(storedValue: false, sudoConfigured: false),
+            false,
+            "effectiveLidFeatureToggle returns false when sudo is not configured and storedValue is false"
+        )
+        expectEqual(
+            SudoFeatureAvailability.effectiveLidFeatureToggle(storedValue: true, sudoConfigured: true),
+            true,
+            "effectiveLidFeatureToggle preserves storedValue true when sudo is configured"
+        )
+        expectEqual(
+            SudoFeatureAvailability.effectiveLidFeatureToggle(storedValue: false, sudoConfigured: true),
+            false,
+            "effectiveLidFeatureToggle preserves storedValue false when sudo is configured"
         )
     }
 }

@@ -29,10 +29,30 @@ public final class Preferences: ObservableObject {
         public static let audioFilterMode = "audioFilterMode"
         public static let audioBlockedApps = "audioBlockedApps"
         public static let audioAllowedApps = "audioAllowedApps"
+        public static let preventDisplaySleep = "preventDisplaySleep"
+        public static let autoClosePopoverOnStart = "autoClosePopoverOnStart"
+        public static let autoStartOnLaunch = "autoStartOnLaunch"
 
-        // Legacy & migration keys
-        public static let legacyAudioAppWhitelist = "audioAppWhitelist"
-        public static let didMigrateAudioWhitelistV2 = "didMigrateAudioWhitelistV2"
+        static let resettableKeys: [String] = [
+            defaultDuration,
+            turnOffScreenOnLidClose,
+            batteryCutoffThreshold,
+            batteryCutoffEnabled,
+            acOnlyModeEnabled,
+            thermalGuardEnabled,
+            showCountdownInMenuBar,
+            soundNotificationsEnabled,
+            showInDock,
+            appFreezeOnLidCloseEnabled,
+            keepAudioActiveOnLidClose,
+            appFreezeWhitelist,
+            audioFilterMode,
+            audioBlockedApps,
+            audioAllowedApps,
+            preventDisplaySleep,
+            autoClosePopoverOnStart,
+            autoStartOnLaunch
+        ]
     }
 
     public static let defaultAppFreezeWhitelist = [
@@ -43,22 +63,6 @@ public final class Preferences: ObservableObject {
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        migrateLegacyAudioWhitelistIfNeeded()
-    }
-
-    private func migrateLegacyAudioWhitelistIfNeeded() {
-        guard !defaults.bool(forKey: Keys.didMigrateAudioWhitelistV2) else { return }
-
-        if let legacyWhitelist = defaults.stringArray(forKey: Keys.legacyAudioAppWhitelist) {
-            if !legacyWhitelist.isEmpty {
-                defaults.set(legacyWhitelist, forKey: Keys.audioAllowedApps)
-                defaults.set(AudioFilterMode.allowOnlySelected.rawValue, forKey: Keys.audioFilterMode)
-            } else if defaults.string(forKey: Keys.audioFilterMode) == nil {
-                defaults.set(AudioFilterMode.allowAllExceptBlocked.rawValue, forKey: Keys.audioFilterMode)
-            }
-        }
-
-        defaults.set(true, forKey: Keys.didMigrateAudioWhitelistV2)
     }
 
     private func willChange() {
@@ -243,5 +247,40 @@ public final class Preferences: ObservableObject {
             defaults.set(newValue, forKey: Keys.audioAllowedApps)
             didChange()
         }
+    }
+
+    public var preventDisplaySleep: Bool {
+        get { defaults.bool(forKey: Keys.preventDisplaySleep) }
+        set {
+            willChange()
+            defaults.set(newValue, forKey: Keys.preventDisplaySleep)
+            didChange()
+        }
+    }
+
+    public var autoClosePopoverOnStart: Bool {
+        get { defaults.bool(forKey: Keys.autoClosePopoverOnStart) }
+        set {
+            willChange()
+            defaults.set(newValue, forKey: Keys.autoClosePopoverOnStart)
+            didChange()
+        }
+    }
+
+    public var autoStartOnLaunch: Bool {
+        get { defaults.bool(forKey: Keys.autoStartOnLaunch) }
+        set {
+            willChange()
+            defaults.set(newValue, forKey: Keys.autoStartOnLaunch)
+            didChange()
+        }
+    }
+
+    public func resetToDefaults() {
+        willChange()
+        for key in Keys.resettableKeys {
+            defaults.removeObject(forKey: key)
+        }
+        didChange()
     }
 }
