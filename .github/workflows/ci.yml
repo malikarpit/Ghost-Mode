@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    name: Build Universal Binary & Run Unit Tests
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check environment
+        run: |
+          sw_vers
+          swift --version
+          xcodebuild -version || true
+
+      - name: Syntax-check shell scripts
+        run: |
+          bash -n ghostmode_setup.sh
+          bash -n make_icns.sh
+
+      - name: Build Universal App and Run Tests
+        run: |
+          make clean
+          make all
+          make test
+
+      - name: Verify Universal Architectures & Code Signature
+        run: |
+          ARCHS=$(lipo -archs "Ghost Mode.app/Contents/MacOS/GhostMode")
+          echo "Architectures: $ARCHS"
+          echo "$ARCHS" | grep -q "arm64"
+          echo "$ARCHS" | grep -q "x86_64"
+          codesign --verify --deep --strict --verbose=2 "Ghost Mode.app"

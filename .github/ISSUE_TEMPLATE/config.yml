@@ -1,5 +1,8 @@
 blank_issues_enabled: true
 contact_links:
-  - name: 💬 Ask a Question & Discussions
+  - name: "Security Vulnerability? Report Privately"
+    url: https://github.com/malikarpit/Ghost-Mode/security/advisories/new
+    about: Never open public issues for sudo, privilege escalation, or signature-bypass vulnerabilities.
+  - name: "Questions & Community Discussions"
     url: https://github.com/malikarpit/Ghost-Mode/discussions
-    about: Ask questions or discuss new ideas with the community.
+    about: Ask usage questions or discuss ideas before opening a feature request.

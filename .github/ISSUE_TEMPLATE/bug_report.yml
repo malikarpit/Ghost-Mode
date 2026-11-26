@@ -1,59 +1,95 @@
-name: "🐛 Bug Report"
-description: File a bug report or issue with Ghost Mode
+name: "Bug Report"
+description: File a bug report for Ghost Mode v2
 title: "[Bug]: "
 labels: ["bug", "triage"]
 body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug! Please fill out the sections below to help us diagnose and fix it quickly.
+        Thank you for reporting an issue with **Ghost Mode**. Please fill out the details below so we can reproduce and resolve it quickly.
+        > Tip: Open **Ghost Mode → Settings → Copy Diagnostics** and paste the output into the Diagnostics field below.
+
   - type: input
     id: macos_version
     attributes:
       label: macOS Version
-      description: e.g., macOS 14.4 Sonoma, macOS 15.0 Sequoia
-      placeholder: macOS 14.x / 15.x
+      description: e.g., macOS 15.4 Sequoia, macOS 26 Tahoe
+      placeholder: macOS 26.x / 15.x
     validations:
       required: true
+
   - type: dropdown
     id: architecture
     attributes:
-      label: Mac Model & Chip
-      description: What hardware are you running on?
+      label: Mac Hardware & Chip
+      description: Select your Mac architecture.
       options:
-        - "Apple Silicon (M1 / M2 / M3 / M4)"
-        - "Intel (64-bit)"
+        - "Apple Silicon (M1 / M2 / M3 / M4 / M5)"
+        - "Intel (x86_64)"
     validations:
       required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      options:
+        - "Session & Timers"
+        - "Closed-Lid Sleep / Clamshell"
+        - "App Whitelist & App Freeze"
+        - "Audio App Rules & Streaming"
+        - "Safety Guards (AC Power / Battery / Thermal)"
+        - "Passwordless Sudo (Setup / Revoke)"
+        - "UI / Liquid Glass / Menu Bar Panel"
+        - "Build / DMG / Launch at Login"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: sudo_status
+    attributes:
+      label: Passwordless Sudo Status
+      description: Shown in Ghost Mode → Settings → Passwordless Sudo.
+      options:
+        - "Configured"
+        - "Not Configured"
+        - "Setup or Revoke failed"
+        - "Not sure"
+    validations:
+      required: true
+
   - type: textarea
     id: description
     attributes:
       label: Describe the Bug
-      description: A clear and concise description of what the bug is.
-      placeholder: When I close the lid with Ghost Mode active...
+      description: A clear and concise description of what happened.
+      placeholder: When I switch tabs / close the lid / click Revoke...
     validations:
       required: true
+
   - type: textarea
     id: steps
     attributes:
       label: Steps to Reproduce
-      description: Steps to reproduce the behavior.
+      description: Exact steps to reproduce the behavior.
       placeholder: |
         1. Open Ghost Mode
-        2. Set timer for 30m
-        3. Close laptop lid
-        4. See error
+        2. Configure settings or start a session
+        3. Observe unexpected behavior
     validations:
       required: true
+
   - type: textarea
     id: expected
     attributes:
       label: Expected Behavior
-      description: A clear and concise description of what you expected to happen.
+      description: What you expected to happen instead.
     validations:
       required: true
+
   - type: textarea
-    id: logs
+    id: diagnostics
     attributes:
-      label: Logs or Console Output (Optional)
-      description: Run Ghost Mode from terminal (`/Applications/Ghost\ Mode.app/Contents/MacOS/GhostMode`) or paste any Console logs.
+      label: Diagnostics & Logs (Recommended)
+      description: Paste output from **Settings → Copy Diagnostics** and any Console logs (`log show --last 5m --predicate 'process == "GhostMode"'`).
+      render: text
