@@ -61,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         print("Ghost Mode v\(AppMetadata.version) by \(AppMetadata.author): Initialized successfully.")
 
         AppNotificationService.shared.configure()
+        AppNotificationService.shared.onNotificationActivated = { [weak self] in
+            self?.statusBarController.showPopover()
+        }
 
         NSApp.setActivationPolicy(Preferences.shared.showInDock ? .regular : .accessory)
 
@@ -122,9 +125,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppNotificationService.shared.requestAuthorizationIfNeeded()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 AppNotificationService.shared.send(
-                    title: "Ghost Mode (by \(AppMetadata.author))",
-                    subtitle: "Active in your Menu Bar",
-                    body: "Click the Ghost Mode icon in the menu bar to start sessions and manage closed-lid behavior.",
+                    GhostNotificationFactory.welcome(),
                     playSound: Preferences.shared.soundNotificationsEnabled
                 )
             }
@@ -549,9 +550,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guardEnabled: Preferences.shared.thermalGuardEnabled,
             onWarnSerious: {
                 AppNotificationService.shared.send(
-                    title: "Ghost Mode Thermal Warning",
-                    subtitle: "Elevated Temperature",
-                    body: "System thermal state is elevated. Ghost Mode will pause if high heat persists for 90s.",
+                    GhostNotificationFactory.thermalWarning(),
                     playSound: Preferences.shared.soundNotificationsEnabled
                 )
             },
@@ -580,9 +579,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let description = rejectionMessage(for: reason)
             viewModel.showBanner(.warning, title: "Cannot Start Session", message: description)
             AppNotificationService.shared.send(
-                title: "Ghost Mode Blocked",
-                subtitle: "Safety Guard Active",
-                body: description,
+                GhostNotificationFactory.startBlocked(reasonMessage: description),
                 playSound: Preferences.shared.soundNotificationsEnabled
             )
             return
@@ -636,9 +633,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppNotificationService.shared.requestAuthorizationIfNeeded()
         let durationText = durationSeconds > 0 ? formatDurationHuman(durationSeconds) : "Indefinite"
         AppNotificationService.shared.send(
-            title: "Ghost Mode Active",
-            subtitle: "Session Active (\(durationText))",
-            body: "Mac will stay awake. Display and app power policies are active.",
+            GhostNotificationFactory.sessionStarted(
+                durationText: durationText,
+                isLidClosed: viewModel.snapshot.hasLid && viewModel.snapshot.isLidClosed
+            ),
             playSound: Preferences.shared.soundNotificationsEnabled
         )
     }
@@ -661,9 +659,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reconcile(trigger: .extendSession)
 
             AppNotificationService.shared.send(
-                title: "Ghost Mode",
-                subtitle: "Session Extended",
-                body: "Added +\(formatDurationHuman(seconds)) to the timer.",
+                GhostNotificationFactory.sessionExtended(
+                    addedText: formatDurationHuman(seconds),
+                    remainingText: formatDurationHuman(remaining),
+                    isLidClosed: viewModel.snapshot.hasLid && viewModel.snapshot.isLidClosed
+                ),
                 playSound: Preferences.shared.soundNotificationsEnabled
             )
 
@@ -674,9 +674,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             reconcile(trigger: .extendSession)
 
             AppNotificationService.shared.send(
-                title: "Ghost Mode",
-                subtitle: "Timer Set",
-                body: "Switched from indefinite to \(formatDurationHuman(seconds)).",
+                GhostNotificationFactory.timerSwitchedFromIndefinite(
+                    durationText: formatDurationHuman(seconds),
+                    isLidClosed: viewModel.snapshot.hasLid && viewModel.snapshot.isLidClosed
+                ),
                 playSound: Preferences.shared.soundNotificationsEnabled
             )
         }
@@ -1305,51 +1306,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func sendStopNotification(for reason: SessionStopReason, pendingRestore: Bool) {
-        let playSound = Preferences.shared.soundNotificationsEnabled
-        switch reason {
-        case .userManual:
-            AppNotificationService.shared.send(
-                title: "Ghost Mode",
-                subtitle: "Normal Sleep Restored",
-                body: "Mac will now sleep normally when closing the lid or idling.",
-                playSound: playSound
-            )
-        case .timerExpired:
-            AppNotificationService.shared.send(
-                title: "Ghost Mode Timer Finished",
-                subtitle: pendingRestore ? "Open Lid to Restore Sleep" : "Session Completed",
-                body: pendingRestore
-                    ? "Timer finished behind a closed lid. Open the lid to restore normal sleep."
-                    : "Your session has ended and normal sleep behavior has been restored.",
-                playSound: playSound
-            )
-        case .lowBattery(let pct):
-            AppNotificationService.shared.send(
-                title: "Ghost Mode Battery Shield",
-                subtitle: "Low Battery (\(pct)%)",
-                body: pendingRestore
-                    ? "Session disengaged for low battery. Open the lid to restore normal sleep."
-                    : "Ghost Mode disengaged automatically to protect your battery.",
-                playSound: playSound
-            )
-        case .unpluggedAC:
-            AppNotificationService.shared.send(
-                title: "Ghost Mode AC Trigger",
-                subtitle: "Power Adapter Unplugged",
-                body: pendingRestore
-                    ? "Switched to battery power. Open the lid to restore normal sleep."
-                    : "Switched to battery power and reverted to normal sleep mode.",
-                playSound: playSound
-            )
-        case .thermalOverheat:
-            AppNotificationService.shared.send(
-                title: "Ghost Mode Thermal Shield",
-                subtitle: "High Temperature Detected",
-                body: pendingRestore
-                    ? "Thermal limit reached. Open the lid to restore normal sleep."
-                    : "Ghost Mode disabled to protect hardware from overheating.",
-                playSound: playSound
-            )
-        }
+        AppNotificationService.shared.send(
+            GhostNotificationFactory.sessionStopped(reason: reason, pendingRestore: pendingRestore),
+            playSound: Preferences.shared.soundNotificationsEnabled
+        )
     }
 }

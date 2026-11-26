@@ -1,0 +1,207 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 648 442" width="648" height="442" role="img" aria-label="Ghost Mode Audio Rules View">
+  <defs>
+    <linearGradient id="studioBg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0A1120"/>
+      <stop offset="50%" stop-color="#0E172A"/>
+      <stop offset="100%" stop-color="#0A1324"/>
+    </linearGradient>
+    <radialGradient id="studioGlow" cx="50%" cy="22%" r="60%">
+      <stop offset="0%" stop-color="#1D4ED8" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#0A1120" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="popoverBase" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#292A2D"/>
+      <stop offset="40%" stop-color="#232426"/>
+      <stop offset="100%" stop-color="#1D1E20"/>
+    </linearGradient>
+    <linearGradient id="popoverRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.28"/>
+      <stop offset="35%" stop-color="#FFFFFF" stop-opacity="0.10"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="cardFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.075"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.035"/>
+    </linearGradient>
+    <linearGradient id="cardRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.05"/>
+    </linearGradient>
+    <linearGradient id="glassPill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+    </linearGradient>
+    <linearGradient id="glassRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.26"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.24"/>
+    </linearGradient>
+    <linearGradient id="bluePill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#1B8FFF"/>
+      <stop offset="100%" stop-color="#0076F5"/>
+    </linearGradient>
+    <linearGradient id="blueRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.42"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.20"/>
+    </linearGradient>
+    <linearGradient id="stopPill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FF4757"/>
+      <stop offset="100%" stop-color="#E62E3D"/>
+    </linearGradient>
+    <linearGradient id="calloutFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#2563EB"/>
+      <stop offset="100%" stop-color="#1D4ED8"/>
+    </linearGradient>
+    <filter id="panelShadow" x="-16%" y="-10%" width="132%" height="126%">
+      <feDropShadow dx="0" dy="16" stdDeviation="18" flood-color="#000000" flood-opacity="0.58"/>
+    </filter>
+    <filter id="knobShadow" x="-30%" y="-30%" width="160%" height="170%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000000" flood-opacity="0.35"/>
+    </filter>
+    <filter id="btnShadow" x="-12%" y="-18%" width="124%" height="145%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.8" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+    <linearGradient id="previewArt" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FDE047"/>
+      <stop offset="28%" stop-color="#F9A8D4"/>
+      <stop offset="62%" stop-color="#93C5FD"/>
+      <stop offset="100%" stop-color="#00B4FF"/>
+    </linearGradient>
+    <linearGradient id="safariDial" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#00BFFF"/>
+      <stop offset="100%" stop-color="#0066FF"/>
+    </linearGradient>
+    <linearGradient id="xcodeBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#228BFF"/>
+      <stop offset="100%" stop-color="#0B50C4"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="648" height="442" rx="20" fill="url(#studioBg)"/>
+  <rect x="0" y="0" width="648" height="442" rx="20" fill="url(#studioGlow)"/>
+  <rect x="0.75" y="0.75" width="646.5" height="440.5" rx="19.25" fill="none" stroke="#FFFFFF" stroke-opacity="0.07" stroke-width="1.5"/>
+  <g filter="url(#panelShadow)">
+    <rect x="128" y="24" width="392" height="394" rx="18" fill="url(#popoverBase)"/>
+    <rect x="128.5" y="24.5" width="391" height="393" rx="17.5" fill="none" stroke="url(#popoverRim)" stroke-width="1"/>
+  </g>
+  <g transform="translate(142,40)">
+    <path d="M8 1.3C4.6 1.3 1.9 4.0 1.9 7.4V14.3L4.5 12.8L6.4 14.4L8 13.1L9.6 14.4L11.5 12.8L14.1 14.3V7.4C14.1 4.0 11.4 1.3 8 1.3Z" fill="none" stroke="#98989D" stroke-width="1.35" stroke-linejoin="round"/>
+    <path d="M4.6 7.0Q5.7 7.9 6.8 7.0" fill="none" stroke="#98989D" stroke-width="1.15" stroke-linecap="round"/>
+    <path d="M9.2 7.0Q10.3 7.9 11.4 7.0" fill="none" stroke="#98989D" stroke-width="1.15" stroke-linecap="round"/>
+  </g>
+  <text x="164" y="52.5" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" font-weight="600" fill="#F5F5F7">Ghost Mode</text>
+  <rect x="463" y="37.5" width="43" height="21" rx="10.5" fill="#FFFFFF" fill-opacity="0.08" stroke="#FFFFFF" stroke-opacity="0.22" stroke-width="1"/>
+  <circle cx="474" cy="48" r="3" fill="#FFFFFF" fill-opacity="0.75"/>
+  <text x="489" y="51.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#E4E4E7" fill-opacity="0.82">Off</text>
+  <rect x="142" y="68" width="364" height="32" rx="16" fill="#FFFFFF" fill-opacity="0.08"/>
+  <rect x="142.5" y="68.5" width="363" height="31" rx="15.5" fill="none" stroke="url(#cardRim)" stroke-width="1"/>
+  <g filter="url(#btnShadow)">
+    <rect x="146" y="72" width="64" height="24" rx="12" fill="url(#glassPill)"/>
+    <rect x="146.5" y="72.5" width="63" height="23" rx="11.5" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
+    <path d="M159.5 80L155.5 84L159.5 88" fill="none" stroke="#F5F5F7" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="183" y="87.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11.5" font-weight="500" fill="#F5F5F7">Safety</text>
+  </g>
+  <text x="324.0" y="88" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="600" fill="#F5F5F7">Audio Rules</text>
+  <g filter="url(#btnShadow)">
+    <rect x="450.0" y="72.0" width="52.0" height="24.0" rx="12.0" fill="url(#bluePill)"/>
+    <rect x="450.5" y="72.5" width="51.0" height="23.0" rx="11.5" fill="none" stroke="url(#blueRim)" stroke-width="1"/>
+    <text x="476.0" y="87.7" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#FFFFFF">Reset</text>
+  </g>
+  <rect x="142" y="110" width="364" height="68" rx="12" fill="url(#cardFill)"/>
+  <rect x="142.5" y="110.5" width="363" height="67" rx="11.5" fill="none" stroke="url(#cardRim)" stroke-width="1"/>
+  <g transform="translate(152.0,120.5)"><path d="M1.8 5.1H4.0L6.8 2.8V10.2L4.0 7.9H1.8Z" fill="#98989D"/><path d="M8.8 4.4C9.5 5.2 9.5 7.8 8.8 8.6M10.4 3.0C11.7 4.5 11.7 8.5 10.4 10.0" fill="none" stroke="#98989D" stroke-width="1.25" stroke-linecap="round"/></g>
+  <text x="169.0" y="130.0" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="600" fill="#98989D" letter-spacing="0.2">FILTER MODE</text>
+  <text x="496" y="130" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" font-weight="500" fill="#98989D">Selected (2)</text>
+  <g filter="url(#btnShadow)">
+    <rect x="152.0" y="140.0" width="169.0" height="24.0" rx="12.0" fill="url(#glassPill)"/>
+    <rect x="152.5" y="140.5" width="168.0" height="23.0" rx="11.5" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
+    <text x="236.5" y="155.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">All Except Blocked</text>
+  </g>
+  <g filter="url(#btnShadow)">
+    <rect x="327.0" y="140.0" width="169.0" height="24.0" rx="12.0" fill="url(#bluePill)"/>
+    <rect x="327.5" y="140.5" width="168.0" height="23.0" rx="11.5" fill="none" stroke="url(#blueRim)" stroke-width="1"/>
+    <text x="411.5" y="155.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#FFFFFF">Only Selected</text>
+  </g>
+  <rect x="142" y="186" width="364" height="180" rx="12" fill="url(#cardFill)"/>
+  <rect x="142.5" y="186.5" width="363" height="179" rx="11.5" fill="none" stroke="url(#cardRim)" stroke-width="1"/>
+  <text x="152" y="206" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#98989D">Only checked apps are allowed to keep playing audio.</text>
+  <rect x="152" y="215" width="344" height="140" rx="8" fill="#FFFFFF" fill-opacity="0.03" stroke="#FFFFFF" stroke-opacity="0.09" stroke-width="1"/>
+  <rect x="162.5" y="225.5" width="11.5" height="11.5" rx="2.8" fill="none" stroke="#8E8E93" stroke-width="1.2"/>
+  <g transform="translate(182.0,223.2)">
+    <rect x="0.5" y="0.5" width="15" height="15" rx="3.8" fill="#1B1C1E" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="0.6"/>
+    <rect x="2.6" y="2.6" width="10.8" height="10.8" rx="2.4" fill="url(#previewArt)"/>
+    <circle cx="10.4" cy="10.4" r="3.4" fill="#F9A8D4" fill-opacity="0.35" stroke="#BAE6FD" stroke-width="0.7"/>
+    <circle cx="10.4" cy="10.4" r="2.1" fill="#E0F2FE" fill-opacity="0.35" stroke="#1F2023" stroke-width="1.4"/>
+  </g>
+  <text x="205" y="235.2" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#F5F5F7">Preview</text>
+  <rect x="162" y="251" width="12.5" height="12.5" rx="3.2" fill="#0A84FF"/>
+  <path d="M164.8 257.4L167.1 259.7L171.6 254.8" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(182.0,249.2)">
+    <rect x="0.5" y="0.5" width="15" height="15" rx="3.8" fill="#1B1C1E" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="0.6"/>
+    <circle cx="8" cy="8" r="5.9" fill="url(#safariDial)"/>
+    <circle cx="8" cy="8" r="5.0" fill="none" stroke="#99F6FF" stroke-opacity="0.75" stroke-width="0.85" stroke-dasharray="0.55 1.41"/>
+    <polygon points="8.6,8.6 11.4,4.6 7.4,7.4" fill="#FF2D20"/>
+    <polygon points="7.4,7.4 4.6,11.4 8.6,8.6" fill="#FFFFFF"/>
+    <circle cx="8" cy="8" r="0.85" fill="#FF7A70"/>
+  </g>
+  <text x="205" y="261.2" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#F5F5F7">Safari</text>
+  <rect x="162" y="277" width="12.5" height="12.5" rx="3.2" fill="#0A84FF"/>
+  <path d="M164.8 283.4L167.1 285.7L171.6 280.8" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <g transform="translate(182.0,275.2)">
+    <rect x="0.5" y="0.5" width="15" height="15" rx="3.8" fill="#17181A" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="0.6"/>
+    <circle cx="8" cy="8" r="5.5" fill="#1ED760"/>
+    <path d="M4.6 6.2C6.8 5.5 9.5 5.8 11.4 6.9" fill="none" stroke="#111315" stroke-width="1.25" stroke-linecap="round"/>
+    <path d="M5.1 8.2C7.0 7.7 9.1 7.9 10.7 8.8" fill="none" stroke="#111315" stroke-width="1.05" stroke-linecap="round"/>
+    <path d="M5.6 10.1C7.1 9.7 8.8 9.9 10.0 10.6" fill="none" stroke="#111315" stroke-width="0.9" stroke-linecap="round"/>
+  </g>
+  <text x="205" y="287.2" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#F5F5F7">Spotify</text>
+  <circle cx="442" cy="283.3" r="3" fill="#30D158"/>
+  <text x="449" y="286.7" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" font-weight="500" fill="#30D158">Playing</text>
+  <rect x="162.5" y="303.5" width="11.5" height="11.5" rx="2.8" fill="none" stroke="#8E8E93" stroke-width="1.2"/>
+  <g transform="translate(182.0,301.2)">
+    <rect x="0.5" y="0.5" width="15" height="15" rx="3.8" fill="#18191B" stroke="#FFFFFF" stroke-opacity="0.20" stroke-width="0.6"/>
+    <path d="M3.4 4.0L5.9 5.6L3.4 7.2" fill="none" stroke="#F8FAFC" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M6.3 8.1H9.6" fill="none" stroke="#9CA3AF" stroke-width="1.35" stroke-linecap="round"/>
+  </g>
+  <text x="205" y="313.2" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#F5F5F7">Terminal</text>
+  <rect x="162.5" y="329.5" width="11.5" height="11.5" rx="2.8" fill="none" stroke="#8E8E93" stroke-width="1.2"/>
+  <g transform="translate(182.0,327.2)">
+    <rect x="0.5" y="0.5" width="15" height="15" rx="3.8" fill="#18191B" stroke="#FFFFFF" stroke-opacity="0.20" stroke-width="0.6"/>
+    <path d="M5.4 1.5V14.5M10.6 1.5V14.5M1.5 5.4H14.5M1.5 10.6H14.5" stroke="#1E3A5F" stroke-opacity="0.75" stroke-width="0.6"/>
+    <g transform="rotate(-10 7.2 8.4)">
+      <rect x="3.4" y="3.4" width="7.4" height="9.2" rx="1.6" fill="url(#xcodeBlue)" stroke="#60A5FA" stroke-opacity="0.55" stroke-width="0.5"/>
+      <path d="M7.1 5.0L5.1 10.6M7.1 5.0L9.1 10.6M5.7 8.9H8.5" fill="none" stroke="#FFFFFF" stroke-opacity="0.78" stroke-width="0.8" stroke-linecap="round"/>
+    </g>
+    <g transform="rotate(42 9.0 7.4)">
+      <rect x="8.3" y="4.8" width="1.5" height="7.6" rx="0.75" fill="#CBD5E1"/>
+      <path d="M6.4 3.4H11.0L12.3 4.2L11.6 5.1L10.1 4.9H7.3V5.4H6.4Z" fill="#FFFFFF"/>
+    </g>
+  </g>
+  <text x="205" y="339.2" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" font-weight="400" fill="#F5F5F7">Xcode</text>
+  <line x1="142" y1="376" x2="506" y2="376" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="1"/>
+  <text x="142" y="397.5" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#98989D">v2.2.1 · by Arpit</text>
+  <text x="434" y="397.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#98989D">GitHub · Report</text>
+  <g filter="url(#btnShadow)">
+    <rect x="442" y="383" width="64" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.06"/>
+    <rect x="442.5" y="383.5" width="63" height="21" rx="10.5" fill="none" stroke="#FF453A" stroke-opacity="0.38" stroke-width="1"/>
+    <text x="474" y="397.2" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#FF7A70">Quit ⌘Q</text>
+  </g>
+  <g>
+    <line x1="68" y1="84.0" x2="131" y2="84.0" stroke="#60A5FA" stroke-opacity="0.7" stroke-width="1.25" stroke-dasharray="3 2.5"/>
+    <circle cx="131" cy="84.0" r="2.4" fill="#60A5FA"/>
+    <circle cx="56" cy="84.0" r="11" fill="url(#calloutFill)" stroke="#93C5FD" stroke-opacity="0.55" stroke-width="1"/>
+    <text x="56" y="87.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">1</text>
+  </g>
+  <g>
+    <line x1="580" y1="148.0" x2="517" y2="148.0" stroke="#60A5FA" stroke-opacity="0.7" stroke-width="1.25" stroke-dasharray="3 2.5"/>
+    <circle cx="517" cy="148.0" r="2.4" fill="#60A5FA"/>
+    <circle cx="592" cy="148.0" r="11" fill="url(#calloutFill)" stroke="#93C5FD" stroke-opacity="0.55" stroke-width="1"/>
+    <text x="592" y="151.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">2</text>
+  </g>
+  <g>
+    <line x1="580" y1="310.0" x2="517" y2="310.0" stroke="#60A5FA" stroke-opacity="0.7" stroke-width="1.25" stroke-dasharray="3 2.5"/>
+    <circle cx="517" cy="310.0" r="2.4" fill="#60A5FA"/>
+    <circle cx="592" cy="310.0" r="11" fill="url(#calloutFill)" stroke="#93C5FD" stroke-opacity="0.55" stroke-width="1"/>
+    <text x="592" y="313.8" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF">3</text>
+  </g>
+</svg>

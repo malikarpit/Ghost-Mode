@@ -23,6 +23,7 @@ struct GhostModeTestRunner {
         testSudoFeatureAvailability()
         testProcessDiagnostics()
         testCoreAudioActivityMonitor()
+        testNotificationsAndGhostIconRendering()
 
         print("")
         print("Ghost Mode Unit Tests Summary: \(passed) passed, \(failed) failed")
@@ -920,7 +921,7 @@ struct GhostModeTestRunner {
         )
 
         expectEqual(AppMetadata.name, "Ghost Mode", "AppMetadata.name is Ghost Mode")
-        expectEqual(AppMetadata.version, "2.2", "AppMetadata.version matches current release")
+        expectEqual(AppMetadata.version, "2.2.1", "AppMetadata.version matches current release")
         let defaultRevoke = SudoersPolicy.revokeCommand()
         expectEqual(
             defaultRevoke,
@@ -1103,5 +1104,35 @@ struct GhostModeTestRunner {
         AppFreezer.shared.stopAudioActivityMonitor()
         AppFreezer.shared.stopAudioActivityMonitor()
         expect(true, "CoreAudio activity monitor starts and stops idempotently")
+    }
+
+    // MARK: - Notifications & Menu Bar Ghost Attachment Rendering
+
+    private static func testNotificationsAndGhostIconRendering() {
+        let started = GhostNotificationFactory.sessionStarted(durationText: "30m", isLidClosed: false)
+        expectEqual(started.title, "Ghost Mode Active (30m)", "sessionStarted includes concise duration in title")
+        expectEqual(started.subtitle, nil, "sessionStarted avoids orphan subtitle line")
+        expectEqual(started.iconStyle, .awake, "open-lid start maps to awake ghost style")
+        expectEqual(started.requestIdentifier, GhostNotificationFactory.sessionRequestID, "session notifications coalesce on session ID")
+
+        let extended = GhostNotificationFactory.sessionExtended(addedText: "15m", remainingText: "45m", isLidClosed: false)
+        expectEqual(extended.title, "Session Extended (+15m)", "sessionExtended shows added increment cleanly")
+        expect(extended.body.contains("45m remaining"), "sessionExtended informs remaining time")
+
+        let stealth = GhostNotificationFactory.sessionStarted(durationText: "Indefinite", isLidClosed: true)
+        expectEqual(stealth.iconStyle, .stealth, "closed-lid start maps to stealth ghost style")
+
+        let stopped = GhostNotificationFactory.sessionStopped(reason: .userManual, pendingRestore: false)
+        expectEqual(stopped.title, "Ghost Mode Off", "manual stop uses concise off title")
+        expectEqual(stopped.iconStyle, .resting, "manual stop maps to resting ghost style")
+        expectEqual(stopped.requestIdentifier, GhostNotificationFactory.sessionRequestID, "manual stop replaces active session banner")
+
+        let lowBattery = GhostNotificationFactory.sessionStopped(reason: .lowBattery(percent: 10), pendingRestore: true)
+        expectEqual(lowBattery.iconStyle, .pendingRestore, "pending restore alert maps to pendingRestore style")
+        expectEqual(lowBattery.isTimeSensitive, true, "safety alerts elevate to timeSensitive interruption level")
+        expectEqual(lowBattery.requestIdentifier, GhostNotificationFactory.safetyRequestID, "safety alerts coalesce on safety ID")
+
+        expect(!GhostVectorGeometry.filledSilhouetteWithCutouts(stealth: false).isEmpty, "menu bar awake ghost path is non-empty")
+        expect(!GhostVectorGeometry.bodyPath(stealth: false).isEmpty, "menu bar resting ghost path is non-empty")
     }
 }

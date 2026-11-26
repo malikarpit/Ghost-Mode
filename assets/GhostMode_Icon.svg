@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Vertical Strong">
+  <defs>
+    <linearGradient id="bgGrad" gradientUnits="userSpaceOnUse" x1="512" y1="940" x2="512" y2="84">
+      <stop offset="0%" stop-color="#0B1018"/>
+      <stop offset="100%" stop-color="#2D3E58"/>
+    </linearGradient>
+    <linearGradient id="rimGrad" gradientUnits="userSpaceOnUse" x1="512" y1="100" x2="512" y2="924">
+      <stop offset="0%" stop-color="#7E92AD" stop-opacity="0.88"/>
+      <stop offset="50%" stop-color="#3C4A5E" stop-opacity="0.40"/>
+      <stop offset="100%" stop-color="#2D3849" stop-opacity="0.54"/>
+    </linearGradient>
+    <linearGradient id="ghostFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F8FBFF"/>
+      <stop offset="100%" stop-color="#EAF0FC"/>
+    </linearGradient>
+    <filter id="iconShadow" x="-12%" y="-10%" width="124%" height="126%">
+      <feDropShadow dx="0" dy="16" stdDeviation="20" flood-color="#000000" flood-opacity="0.46"/>
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.24"/>
+    </filter>
+    <path id="appleSquircle" d="M924.00 512.00 L924.00 642.73 C924.00 723.72 924.00 764.21 910.22 807.81 C892.89 855.40 855.40 892.89 807.81 910.22 C764.21 924.00 723.72 924.00 642.73 924.00 L381.27 924.00 C300.28 924.00 259.79 924.00 216.19 910.22 C168.60 892.89 131.11 855.40 113.78 807.81 C100.00 764.21 100.00 723.72 100.00 642.73 L100.00 381.27 C100.00 300.28 100.00 259.79 113.78 216.19 C131.11 168.60 168.60 131.11 216.19 113.78 C259.79 100.00 300.28 100.00 381.27 100.00 L642.73 100.00 C723.72 100.00 764.21 100.00 807.81 113.78 C855.40 131.11 892.89 168.60 910.22 216.19 C924.00 259.79 924.00 300.28 924.00 381.27 Z"/>
+  </defs>
+
+  <g filter="url(#iconShadow)">
+    <use href="#appleSquircle" fill="url(#bgGrad)"/>
+  </g>
+  <use href="#appleSquircle" fill="none" stroke="url(#rimGrad)" stroke-width="4"/>
+
+  <g transform="translate(232.19, 232.02) scale(31.09)">
+    <path
+      fill="url(#ghostFill)"
+      fill-rule="evenodd"
+      d="M3.60 14.10 L3.60 7.40 C3.60 4.418 6.018 2.00 9.00 2.00 C11.982 2.00 14.40 4.418 14.40 7.40 L14.40 14.10 C13.86 15.60 11.34 15.60 10.80 14.10 C10.26 15.60 7.74 15.60 7.20 14.10 C6.66 15.60 4.14 15.60 3.60 14.10 Z M7.05 6.00 A0.95 0.95 0 0 1 8.00 6.95 L8.00 8.05 A0.95 0.95 0 0 1 6.10 8.05 L6.10 6.95 A0.95 0.95 0 0 1 7.05 6.00 Z M10.95 6.00 A0.95 0.95 0 0 1 11.90 6.95 L11.90 8.05 A0.95 0.95 0 0 1 10.00 8.05 L10.00 6.95 A0.95 0.95 0 0 1 10.95 6.00 Z"
+    />
+  </g>
+</svg>

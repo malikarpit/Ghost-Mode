@@ -1,6 +1,6 @@
 <div align="center">
 
-  <img src="assets/GhostMode_AppIcon.png" alt="Ghost Mode for macOS" width="128" height="128" />
+  <img src="assets/GhostMode_Icon.svg" alt="Ghost Mode for macOS" width="128" height="128" />
 
   <h1>Ghost Mode</h1>
 
@@ -10,7 +10,7 @@
 
   <p>
     <a href="https://github.com/malikarpit/Ghost-Mode/actions/workflows/ci.yml"><img src="https://github.com/malikarpit/Ghost-Mode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest"><img src="assets/badges/release.svg" alt="Release v2.2.0" /></a>
+    <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest"><img src="assets/badges/release.svg" alt="Release v2.2.1" /></a>
     <img src="assets/badges/macos.svg" alt="macOS 12.0+ Apple Silicon | 14.0+ Intel" />
     <img src="assets/badges/architecture.svg" alt="Universal 2 Binary (arm64 + x86_64)" />
     <img src="assets/badges/dependencies.svg" alt="Zero Dependencies" />
@@ -25,12 +25,12 @@
 
   <p>
     <a href="#features">Features</a> &middot;
-    <a href="#resource-management--system-impact">Resource Management</a> &middot;
-    <a href="#closed-lid-privilege-modes">Privilege Modes</a> &middot;
-    <a href="#installation">Installation</a> &middot;
+    <a href="#resource-management">Resources</a> &middot;
+    <a href="#installation">Install</a> &middot;
+    <a href="USER_GUIDE.md">User Guide</a> &middot;
+    <a href="TROUBLESHOOTING.md">Troubleshooting</a> &middot;
     <a href="#architecture">Architecture</a> &middot;
-    <a href="SECURITY.md">Security</a> &middot;
-    <a href="CONTRIBUTING.md">Contributing</a>
+    <a href="SECURITY.md">Security</a>
   </p>
 
 </div>
@@ -49,63 +49,77 @@ MacBooks normally force sleep the moment you close the lid unless an external mo
 
 ## Features
 
-### Session & Display Control
+- **Session & Display**: `15m`–`8h` / `∞` presets, `Custom...` duration (`90m`, `1.5h`), live `+15m`–`∞` extensions, **Turn Off Screen**, **Screen Saver**, **Keep Display Awake**, and live lid/battery/thermal telemetry.
+- **Power & Thermal Guards**: **Only Keep Awake on AC Power**, **Low Battery Cutoff** (`5–20%` or custom `1–50%`), and **Thermal Overheat Protection** with live heat status.
+- **Clamshell & App Isolation**: **Turn Off Screen on Lid Close**, **Freeze Apps on Lid Close** (`SIGSTOP`/`SIGCONT`), **App Whitelist (Keep Running)**, and **Keep Music & Audio Streaming** (**Audio App Rules**: *All Except Blocked* / *Only Selected*).
+- **System & Diagnostics**: **Show Countdown in Menu Bar**, **Auto-Close Panel on Start**, **Auto-Start at Launch**, **Launch at Login**, **Show App Icon in Dock**, 1-click **Passwordless Sudo**, and live **Ghost Mode Footprint** + **Copy Diagnostics**.
 
-- **Flexible Timers & Presets**: Start for `15m`, `30m`, `45m`, `1h`, `2h`, `4h`, `8h`, or Indefinite (`∞`).
-- **Live Extensions & Custom Input**: Add `+15m`, `+30m`, `+1h`, or `∞` mid-session, or type durations like `90m`, `1.5h`, or `45`.
-- **1-Click Display Actions**: **Turn Off Screen** (`pmset displaysleepnow` / `IODisplayWrangler`), trigger **Screen Saver**, or shut off the display automatically on lid close.
-- **Live Telemetry**: Compact session countdown bar alongside lid state, AC/battery percentage, thermal pressure, and `Kernel: Protected / Normal` status.
+> Full screen-by-screen vector walkthrough of every tab and control: [**USER_GUIDE.md**](USER_GUIDE.md)
 
-### Automated Safety Guards
-
-- **AC Power Only**: Automatically ends an active keep-awake session (debounced) if the MagSafe/USB-C charger is disconnected.
-- **Low Battery Cutoff**: Auto-stops at `5%`, `10%`, `15%`, `20%`, or any custom `1–50%` threshold and restores normal system sleep.
-- **Thermal Pressure Protection**: Surfaces a warning on sustained elevated heat and exits keep-awake safely on critical thermal pressure.
-
-### Closed-Lid App Isolation & Audio Rules
-
-- **App Freeze (`SIGSTOP` / `SIGCONT`)**: Pauses idle GUI apps in RAM while keeping CLI tools, servers, AI agents, system daemons, and user-whitelisted apps active—with child-first freezing, parent-first resume, orphan recovery (`frozen_pids.json`), and async-signal-safe crash cleanup.
-- **Audio Ownership Rules**: Choose **All Except Blocked** or **Only Selected** using `CoreAudio` (`kAudioHardwarePropertyProcessObjectList`), `IOPMCopyAssertionsByProcess`, Cryptex path normalization, and `responsibility_get_pid_responsible_for_pid` so WebKit/Electron media helpers resolve to their owning browser or player.
-- **Persistent Rules**: Whitelisted and audio-rule apps remain visible in Preferences even when currently quit.
-
-### Settings, Diagnostics & Lifecycle
-
-- **Startup & Visibility**: Toggle **Default Duration**, menu bar countdown badge, **Auto-Close Panel**, **Auto-Start at Launch**, **Show in Dock**, sound notifications, and native **Launch at Login** (`SMAppService` / LaunchAgent).
-- **Passwordless Sudo Setup & Revoke**: Hardened 1-click installer/uninstaller scoped to `pmset` commands.
-- **Diagnostics & Reset**: Built-in **Copy Diagnostics**, Reset Defaults, and live Activity Monitor-matched CPU & `phys_footprint` RAM readout in Settings.
+<p align="center">
+  <img src="assets/previews/session-active.svg" alt="Ghost Mode Active Session" width="410" />
+  <img src="assets/previews/safety.svg" alt="Ghost Mode Safety Controls" width="410" />
+</p>
 
 ---
 
-## Resource Management & System Impact
+## Resource Management
 
-Ghost Mode is designed to consume virtually **0% CPU** when sitting in the menu bar—even while an active closed-lid session is keeping macOS awake. Instead of background polling loops or repeated shell subprocesses, resource usage is tightly bounded around user interaction and kernel hardware callbacks.
+Built to sit at **0% steady CPU** in your menu bar—using event callbacks instead of background polling:
 
-### How Ghost Mode Keeps Overhead Minimal
+| State | CPU | RAM (`phys_footprint`) | Active Work |
+| --- | --- | --- | --- |
+| **Idle / Active Session** | **0.0%** | **~12 MB** *(80 KB GPU)* | Menu bar item + IOKit RunLoop callbacks only |
+| **Popover Open** | **< 1%** *(~3% burst)* | **~42–45 MB** *(~7.8 MB GPU)* | Liquid Glass SwiftUI UI, app icons, `5s` visible refresh |
+| **Closed (`> 5s` teardown)** | **0.0%** | **~32 MB** *(80 KB GPU)* | UI views, icons, and compositor surfaces released |
 
-- **Lazy UI Allocation & 5-Second Idle Teardown** (`StatusBarController`): At launch, Ghost Mode does **not** build its SwiftUI hosting hierarchy (`NSHostingController`), `GhostPopoverPanel`, or `NSGlassEffectView` / `NSVisualEffectView` surfaces until you click the menu bar icon. Closing the popover immediately clears cached app icons and releases the SwiftUI view controller, panel, and compositor backing layers after `5.0s` of inactivity.
-- **Visibility-Gated Refreshing** (`AppDelegate`): The `5.0s` UI refresh timer stops whenever the popover is hidden. Background ticks skip `NSRunningApplication` icon extraction, `CoreAudio`/IOPM audio enumeration, `sudo -n` checks, and CPU/RAM diagnostics while closed.
-- **Direct IOKit Queries Instead of Subprocesses** (`PowerManager` & `DisplayManager`): Kernel sleep state (`IOPMrootDomain` `"SleepDisabled"`), clamshell state (`AppleClamshellState`), AC/battery events (`IOPSNotificationCreateRunLoopSource`), and sleep callbacks (`IORegisterForSystemPower`) run in-process via C/IOKit APIs rather than spawning `/usr/bin/pmset -g` subprocesses.
-- **Event-Driven CoreAudio & Workspace Listeners** (`AppFreezer` & `AppDelegate`): On macOS 14+, closed-lid freeze/unfreeze reconciliation listens directly to CoreAudio process and output-running property notifications (`kAudioHardwarePropertyProcessObjectList` + `kAudioProcessPropertyIsRunningOutput`, debounced `150ms`) plus `NSWorkspace` launch/termination events—eliminating the former 2-second closed-lid polling timer (falling back to a relaxed `15s` check only on macOS 12–13).
-- **Accurate Footprint & Interval CPU Reporting** (`ProcessDiagnostics`): In-app diagnostics measure `task_vm_info_data_t.phys_footprint` (matching Activity Monitor's **Memory** column) and interval CPU deltas via `getrusage(RUSAGE_SELF)` + `CLOCK_UPTIME_RAW` rather than inflated VM/RSS totals or cumulative averages.
+- **Lazy UI & 5s Teardown**: Allocates the panel/SwiftUI host only when opened and releases views, icons, and glass layers `5s` after closing.
+- **Visibility-Gated Work**: Skips icon loading, audio scans, `sudo -n` checks, and telemetry whenever hidden.
+- **In-Process IOKit & CoreAudio Listeners**: Reads `IOPMrootDomain` `SleepDisabled` in-process (zero `pmset -g` subprocesses) and reacts to CoreAudio + `NSWorkspace` events on macOS 14+ instead of 2s polling.
+- **System Effect When Closed**: Turning off the screen backlight and pausing idle GUI apps at `0%` CPU substantially cuts closed-lid battery drain and heat.
 
-### Approximate System Resource Effect
+---
 
-Measured on Apple Silicon (`arm64`, macOS 26+) via macOS `footprint` and `ps`:
+## Installation
 
-| State | CPU Usage | Physical Footprint (`phys_footprint`) | CoreAnimation / GPU Layers | What Is Running |
-| --- | --- | --- | --- | --- |
-| **Background Idle (Launch / Session Active)** | **0.0%** | **~12 MB** | **80 KB** | Status bar item + IOKit RunLoop callbacks only (zero UI/SwiftUI objects allocated) |
-| **Popover Open (Active UI)** | **< 1% steady** *(~3% initial open burst)* | **~42–45 MB** | **~7.8 MB** | SwiftUI view graph, `NSGlassEffectView` surface, app icons, `5s` visible telemetry refresh |
-| **After Closing Popover (`> 5s` Teardown)** | **0.0%** | **~32 MB** *(cached malloc framework pages; macOS reclaimable as needed)* | **80 KB** | UI hierarchy, icons, and GPU glass backing stores completely released |
-| **Before Optimizations (Background Polling + Retained UI)** | *0.0–0.8%* | *~45 MB* | *~6.7 MB retained continuously* | Always-allocated UI, `2s` UI & closed-lid timers, periodic `pmset -g` subprocess forks |
+### Easiest Install (Prebuilt Universal DMG)
 
-**Whole-System Impact When Lid Is Closed:** Ghost Mode itself adds negligible battery or CPU load (`0.0%` steady CPU, zero subprocess spawning between user actions). When **Turn Off Screen on Lid Close** and **Freeze Apps on Lid Close** are enabled, shutting down panel backlight power and pausing idle background GUI/Electron apps (`0%` CPU under `SIGSTOP`) substantially lowers total system wattage, battery drain, and chassis heat compared to keeping displays or idle foreground apps active while closed.
+1. Download **`GhostMode-Installer.dmg`** from [**GitHub Releases**](https://github.com/malikarpit/Ghost-Mode/releases/latest), open it, and drag **Ghost Mode.app** into **Applications**.
+2. **Allow first launch** *(open-source build, ad-hoc signed without paid Apple notarization)*:
+   - **Fastest (one command in Terminal — clears quarantine cleanly for Launch at Login & Finder):**
+     ```bash
+     xattr -cr "/Applications/Ghost Mode.app"
+     ```
+   - **No-Terminal option:** Double-click **Ghost Mode.app** once &rarr; open **System Settings &rarr; Privacy & Security &rarr; Open Anyway**.
+3. **Launch Ghost Mode** and click the ghost icon in your menu bar.
+4. **Enable frictionless closed-lid controls (recommended):** Open **Settings &rarr; Passwordless Sudo &rarr; Setup...** once so Screen Off, App Freeze, and sleep restoration run silently with no password prompts.
+
+> Having trouble with Gatekeeper, lock screen prompts, audio rules, or cached icons? See [**TROUBLESHOOTING.md**](TROUBLESHOOTING.md).
+
+### Build From Source
+
+| Requirement | Details |
+| --- | --- |
+| **OS** | macOS 12.0+ (Apple Silicon) &middot; macOS 14.0+ (Intel via CLT; macOS 12.0+ with Xcode) |
+| **Toolchain** | Apple Command Line Tools (`xcode-select --install`) or Xcode |
+
+```bash
+git clone https://github.com/malikarpit/Ghost-Mode.git
+cd Ghost-Mode
+
+# Build Universal 2 bundle, run all 237 unit tests & install to /Applications
+make test && make install
+
+# Optional: package GhostMode-Installer.dmg | clean uninstall
+make dmg
+make uninstall
+```
 
 ---
 
 ## Closed-Lid Privilege Modes
 
-macOS requires `root` access to toggle kernel sleep (`pmset disablesleep 1/0`). Ghost Mode never elevates silently—it scopes access transparently and disables closed-lid automation controls whenever passwordless sudo is absent:
+macOS requires `root` access to toggle kernel sleep (`pmset disablesleep 1/0`). Ghost Mode never elevates silently—closed-lid automation stays disabled until you configure passwordless sudo:
 
 | Capability | Passwordless Sudo Configured | Not Configured |
 | --- | --- | --- |
@@ -114,46 +128,6 @@ macOS requires `root` access to toggle kernel sleep (`pmset disablesleep 1/0`). 
 | Freeze Apps on Lid Close, Whitelist &amp; Audio Rules | Enabled | Visually off &amp; disabled |
 | Safety cutoffs while lid stays closed | Silent sleep restore immediately | Waits in *Sleep Restore Pending* until lid opens |
 | Open-lid display keep-awake &amp; battery/thermal guards | Enabled | Enabled (native IOKit assertions) |
-
----
-
-## Installation
-
-### Prebuilt Universal DMG (Recommended)
-
-1. Download **`GhostMode-Installer.dmg`** (and optionally `GhostMode-Installer.dmg.sha256`) from [**GitHub Releases**](https://github.com/malikarpit/Ghost-Mode/releases/latest).
-2. Verify checksum if desired, open the `.dmg`, and drag **Ghost Mode.app** into `/Applications`:
-   ```bash
-   shasum -a 256 -c GhostMode-Installer.dmg.sha256
-   ```
-3. **First-Launch Gatekeeper Note**: Community `.dmg` builds are ad-hoc signed without a paid Apple Developer ID certificate. If macOS displays an unverified-developer dialog, Right-Click **Ghost Mode.app &rarr; Open**, or clear quarantine after copying to `/Applications`:
-   ```bash
-   xattr -d com.apple.quarantine "/Applications/Ghost Mode.app"
-   ```
-
-### Build From Source
-
-| Requirement | Details |
-| --- | --- |
-| **OS** | macOS 12.0+ (Apple Silicon) &middot; macOS 14.0+ (Intel via CLT; macOS 12.0+ with full Xcode) |
-| **Toolchain** | Apple Command Line Tools (`xcode-select --install`) or Xcode |
-
-```bash
-git clone https://github.com/malikarpit/Ghost-Mode.git
-cd Ghost-Mode
-
-# Build Universal 2 bundle (arm64 + x86_64) & run all 222 unit tests
-make clean && make all && make test
-
-# Install to /Applications/Ghost Mode.app
-make install
-
-# Package GhostMode-Installer.dmg
-make dmg
-
-# Remove app & LaunchAgent cleanly
-make uninstall
-```
 
 ---
 
@@ -199,6 +173,8 @@ flowchart LR
 
 ## Support & Community
 
+- **User Guide**: See [**USER_GUIDE.md**](USER_GUIDE.md) for an annotated vector guide to every control.
+- **Troubleshooting**: Check [TROUBLESHOOTING.md](TROUBLESHOOTING.md) for Gatekeeper, lock screen, sudo, audio, and icon fixes.
 - **Report a Bug**: Open a [Bug Report](https://github.com/malikarpit/Ghost-Mode/issues/new?template=bug_report.yml) and attach **Settings &rarr; Copy Diagnostics**.
 - **Request a Feature**: Start a [Feature Request](https://github.com/malikarpit/Ghost-Mode/issues/new?template=feature_request.yml) or join [Discussions](https://github.com/malikarpit/Ghost-Mode/discussions).
 - **Report a Security Issue**: Read [SECURITY.md](SECURITY.md) and submit privately via [GitHub Security Advisories](https://github.com/malikarpit/Ghost-Mode/security/advisories/new).

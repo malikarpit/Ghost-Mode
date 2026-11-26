@@ -11,9 +11,9 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>2.2</string>
+    <string>2.2.1</string>
     <key>CFBundleVersion</key>
-    <string>2.2</string>
+    <string>2.2.1</string>
     <key>CFBundleExecutable</key>
     <string>GhostMode</string>
     <key>CFBundleIconFile</key>
@@ -27,7 +27,7 @@
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 Arpit. All rights reserved.</string>
     <key>CFBundleGetInfoString</key>
-    <string>Ghost Mode v2.2, Developed by Arpit. Copyright © 2026 Arpit.</string>
+    <string>Ghost Mode v2.2.1, Developed by Arpit. Copyright © 2026 Arpit.</string>
     <key>Author</key>
     <string>Arpit</string>
 </dict>

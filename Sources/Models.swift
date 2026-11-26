@@ -4,6 +4,7 @@
 //
 
 import AppKit
+import CoreGraphics
 import Darwin
 import Foundation
 
@@ -11,7 +12,7 @@ import Foundation
 
 public struct AppMetadata {
     public static let name = "Ghost Mode"
-    public static let version = "2.2"
+    public static let version = "2.2.1"
     public static let author = "Arpit"
     public static let copyright = "Copyright © 2026 Arpit. All rights reserved."
     public static let digitalSignature = "Signed by Arpit (com.arpit.GhostMode)"
@@ -195,9 +196,202 @@ public enum SafetyViolation: Equatable {
     }
 }
 
+public enum GhostIconStyle: Equatable, Hashable {
+    case resting
+    case awake
+    case stealth
+    case pendingRestore
+
+    public static func from(sessionMode: SessionMode, isLidClosed: Bool) -> GhostIconStyle {
+        switch sessionMode {
+        case .idle:
+            return .resting
+        case .pendingSleepRestore:
+            return .pendingRestore
+        case .activeFinite, .activeIndefinite:
+            return isLidClosed ? .stealth : .awake
+        }
+    }
+
+    public var cacheKey: String {
+        switch self {
+        case .resting: return "ghost.resting"
+        case .awake: return "ghost.awake"
+        case .stealth: return "ghost.stealth"
+        case .pendingRestore: return "ghost.pendingRestore"
+        }
+    }
+}
+
+public enum GhostVectorGeometry {
+    public static let canvasSize: CGFloat = 18.0
+
+    public static func bodyPath(stealth: Bool) -> CGPath {
+        let centerX: CGFloat = 9.0
+        let radius: CGFloat = stealth ? 4.9 : 5.4
+        let domeY: CGFloat = stealth ? 6.4 : 7.4
+        let hemY: CGFloat = stealth ? 11.8 : 14.1
+        let valleyY: CGFloat = stealth ? 13.0 : 15.6
+        let k = 0.55228475 * radius
+
+        let leftX = centerX - radius
+        let rightX = centerX + radius
+        let topY = domeY - radius
+        let lobeWidth = (rightX - leftX) / 3.0
+
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: leftX, y: hemY))
+        path.addLine(to: CGPoint(x: leftX, y: domeY))
+        path.addCurve(
+            to: CGPoint(x: centerX, y: topY),
+            control1: CGPoint(x: leftX, y: domeY - k),
+            control2: CGPoint(x: centerX - k, y: topY)
+        )
+        path.addCurve(
+            to: CGPoint(x: rightX, y: domeY),
+            control1: CGPoint(x: centerX + k, y: topY),
+            control2: CGPoint(x: rightX, y: domeY - k)
+        )
+        path.addLine(to: CGPoint(x: rightX, y: hemY))
+
+        let lobeInset = 0.15 * lobeWidth
+        for idx in 0..<3 {
+            let x0 = rightX - CGFloat(idx) * lobeWidth
+            let x1 = rightX - CGFloat(idx + 1) * lobeWidth
+            path.addCurve(
+                to: CGPoint(x: x1, y: hemY),
+                control1: CGPoint(x: x0 - lobeInset, y: valleyY),
+                control2: CGPoint(x: x1 + lobeInset, y: valleyY)
+            )
+        }
+        path.closeSubpath()
+        return path
+    }
+
+    public static func restingClosedEyesPath() -> CGPath {
+        let path = CGMutablePath()
+        path.move(to: CGPoint(x: 6.15, y: 7.4))
+        path.addQuadCurve(to: CGPoint(x: 7.95, y: 7.4), control: CGPoint(x: 7.05, y: 8.5))
+        path.move(to: CGPoint(x: 10.05, y: 7.4))
+        path.addQuadCurve(to: CGPoint(x: 11.85, y: 7.4), control: CGPoint(x: 10.95, y: 8.5))
+        return path
+    }
+
+    public static func filledSilhouetteWithCutouts(stealth: Bool) -> CGPath {
+        let path = CGMutablePath()
+        path.addPath(bodyPath(stealth: stealth))
+        if stealth {
+            path.addRoundedRect(
+                in: CGRect(x: 6.45, y: 5.2, width: 1.7, height: 2.6),
+                cornerWidth: 0.85,
+                cornerHeight: 0.85
+            )
+            path.addRoundedRect(
+                in: CGRect(x: 9.85, y: 5.2, width: 1.7, height: 2.6),
+                cornerWidth: 0.85,
+                cornerHeight: 0.85
+            )
+        } else {
+            path.addRoundedRect(
+                in: CGRect(x: 6.1, y: 6.0, width: 1.9, height: 3.0),
+                cornerWidth: 0.95,
+                cornerHeight: 0.95
+            )
+            path.addRoundedRect(
+                in: CGRect(x: 10.0, y: 6.0, width: 1.9, height: 3.0),
+                cornerWidth: 0.95,
+                cornerHeight: 0.95
+            )
+        }
+        return path
+    }
+
+    public static func stealthLidBarPath() -> CGPath {
+        let path = CGMutablePath()
+        path.addRoundedRect(
+            in: CGRect(x: 2.5, y: 14.4, width: 13.0, height: 1.8),
+            cornerWidth: 0.9,
+            cornerHeight: 0.9
+        )
+        return path
+    }
+
+    /// Draws the menu-bar ghost glyph (`18x18` coordinate space, top-down flipped context).
+    public static func drawGlyph(style: GhostIconStyle, in ctx: CGContext, inkColor: CGColor) {
+        ctx.setFillColor(inkColor)
+        ctx.setStrokeColor(inkColor)
+
+        switch style {
+        case .resting:
+            ctx.setLineWidth(1.4)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+            ctx.addPath(bodyPath(stealth: false))
+            ctx.strokePath()
+
+            ctx.setLineWidth(1.3)
+            ctx.setLineCap(.round)
+            ctx.addPath(restingClosedEyesPath())
+            ctx.strokePath()
+
+        case .awake:
+            ctx.addPath(filledSilhouetteWithCutouts(stealth: false))
+            ctx.fillPath(using: .evenOdd)
+
+        case .stealth:
+            ctx.addPath(filledSilhouetteWithCutouts(stealth: true))
+            ctx.fillPath(using: .evenOdd)
+
+            ctx.addPath(stealthLidBarPath())
+            ctx.fillPath(using: .winding)
+
+        case .pendingRestore:
+            break
+        }
+    }
+}
+
+public struct GhostNotificationPayload: Equatable {
+    public let title: String
+    public let subtitle: String?
+    public let body: String
+    public let requestIdentifier: String
+    public let threadIdentifier: String
+    public let iconStyle: GhostIconStyle
+    public let isTimeSensitive: Bool
+
+    public init(
+        title: String,
+        subtitle: String? = nil,
+        body: String,
+        requestIdentifier: String = "com.arpit.ghostmode.session",
+        threadIdentifier: String = "session",
+        iconStyle: GhostIconStyle = .awake,
+        isTimeSensitive: Bool = false
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.body = body
+        self.requestIdentifier = requestIdentifier
+        self.threadIdentifier = threadIdentifier
+        self.iconStyle = iconStyle
+        self.isTimeSensitive = isTimeSensitive
+    }
+}
+
 public protocol NotificationSending: AnyObject {
     func requestAuthorizationIfNeeded()
+    func send(_ payload: GhostNotificationPayload, playSound: Bool)
     func send(title: String, subtitle: String?, body: String, playSound: Bool)
+}
+
+public extension NotificationSending {
+    func send(title: String, subtitle: String? = nil, body: String, playSound: Bool = true) {
+        send(
+            GhostNotificationPayload(title: title, subtitle: subtitle, body: body),
+            playSound: playSound
+        )
+    }
 }
 
 // MARK: - Sudoers Policy & Privileged Command Result

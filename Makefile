@@ -22,6 +22,7 @@ BUILD_DIR = /tmp/ghostmode_build
 TEST_BIN = $(BUILD_DIR)/GhostModeTests
 TEST_SOURCES = \
 	Sources/Models.swift \
+	Sources/NotificationService.swift \
 	Sources/Preferences.swift \
 	Sources/DurationHelpers.swift \
 	Sources/SafetyControllers.swift \
