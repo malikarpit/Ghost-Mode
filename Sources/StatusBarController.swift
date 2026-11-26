@@ -155,12 +155,13 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     private var currentTopY: CGFloat?
 
     private let statusItem: NSStatusItem
-    private let panel: GhostPopoverPanel
-    private let containerView: NSView
-    private let clipView: FlippedClipView
+    private var panel: GhostPopoverPanel?
+    private var containerView: NSView?
+    private var clipView: FlippedClipView?
     private let uiState: PopoverUIState
-    private let hostingController: NSHostingController<FixedTopPopoverHost>
+    private var hostingController: NSHostingController<FixedTopPopoverHost>?
     private var hostingHeightConstraint: NSLayoutConstraint?
+    private var idleTeardownWorkItem: DispatchWorkItem?
     private let contextMenu: NSMenu
     private let viewModel: GhostModeViewModel
     private let onWillOpen: (() -> Void)?
@@ -194,40 +195,16 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         self.onPopoverVisibilityChanged = onPopoverVisibilityChanged
 
         self.statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        let initialRect = NSRect(x: 0, y: 0, width: panelWidth, height: currentHeight)
-        self.panel = GhostPopoverPanel(contentRect: initialRect)
-        if #available(macOS 26.0, *) {
-            self.containerView = PopoverGlassContainerView(frame: initialRect)
-        } else {
-            self.containerView = PopoverContainerView(frame: initialRect)
-        }
-        // Flipped clip view pins hostingController.view at top so panel resizes downward only.
-        self.clipView = FlippedClipView(frame: NSRect(origin: .zero, size: initialRect.size))
         let initialMaxPanel = min(720, (NSScreen.main?.visibleFrame.height ?? 760) - 36)
         let initialMaxBody = max(200, min(520, initialMaxPanel - 140))
         self.currentHostHeight = initialMaxPanel
         self.lastMaxBodyHeight = initialMaxBody
-        let hostUIState = PopoverUIState(hostHeight: initialMaxPanel)
-        self.uiState = hostUIState
-        let initialHostView = FixedTopPopoverHost(
-            viewModel: viewModel,
-            preferences: viewModel.preferences,
-            uiState: hostUIState,
-            maxBodyHeight: initialMaxBody,
-            onPreferredHeightChange: nil
-        )
-        self.hostingController = NSHostingController(rootView: initialHostView)
-        if #available(macOS 13.0, *) {
-            self.hostingController.sizingOptions = []
-        }
+        self.uiState = PopoverUIState(hostHeight: initialMaxPanel)
         self.contextMenu = NSMenu()
 
         super.init()
 
-        hostingController.rootView = makeRootHostView(maxBodyHeight: initialMaxBody)
-
         configureStatusButton()
-        configurePanel()
         configureContextMenu()
         updateStatusButton(
             sessionMode: viewModel.sessionMode,
@@ -237,6 +214,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     deinit {
+        idleTeardownWorkItem?.cancel()
         if let monitor = globalClickMonitor {
             NSEvent.removeMonitor(monitor)
         }
@@ -257,35 +235,88 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         button.sendAction(on: [.leftMouseUp, .rightMouseUp])
     }
 
-    private func configurePanel() {
-        panel.contentView = containerView
+    private func ensurePanelLoaded() -> (panel: GhostPopoverPanel, containerView: NSView) {
+        if let existingPanel = panel, let existingContainer = containerView, hostingController != nil {
+            return (existingPanel, existingContainer)
+        }
 
-        clipView.wantsLayer = true
-        clipView.layer?.cornerRadius = 18
-        clipView.layer?.masksToBounds = true
-        if #available(macOS 26.0, *), let glassView = containerView as? NSGlassEffectView {
-            glassView.contentView = clipView
+        let screenMaxPanel = maxPanelHeightForCurrentScreen()
+        let screenMaxBody = maxBodyHeightForCurrentScreen()
+        currentHostHeight = screenMaxPanel
+        lastMaxBodyHeight = screenMaxBody
+        uiState.hostHeight = screenMaxPanel
+
+        let initialRect = NSRect(x: 0, y: 0, width: panelWidth, height: currentHeight)
+        let newPanel = GhostPopoverPanel(contentRect: initialRect)
+        let newContainer: NSView
+        if #available(macOS 26.0, *) {
+            newContainer = PopoverGlassContainerView(frame: initialRect)
         } else {
-            clipView.translatesAutoresizingMaskIntoConstraints = false
-            containerView.addSubview(clipView)
+            newContainer = PopoverContainerView(frame: initialRect)
+        }
+        let newClipView = FlippedClipView(frame: NSRect(origin: .zero, size: initialRect.size))
+        let newHostingController = NSHostingController(rootView: makeRootHostView(maxBodyHeight: screenMaxBody))
+        if #available(macOS 13.0, *) {
+            newHostingController.sizingOptions = []
+        }
+
+        newPanel.contentView = newContainer
+        newClipView.wantsLayer = true
+        newClipView.layer?.cornerRadius = 18
+        newClipView.layer?.masksToBounds = true
+        if #available(macOS 26.0, *), let glassView = newContainer as? NSGlassEffectView {
+            glassView.contentView = newClipView
+        } else {
+            newClipView.translatesAutoresizingMaskIntoConstraints = false
+            newContainer.addSubview(newClipView)
             NSLayoutConstraint.activate([
-                clipView.topAnchor.constraint(equalTo: containerView.topAnchor),
-                clipView.bottomAnchor.constraint(equalTo: containerView.bottomAnchor),
-                clipView.leadingAnchor.constraint(equalTo: containerView.leadingAnchor),
-                clipView.trailingAnchor.constraint(equalTo: containerView.trailingAnchor)
+                newClipView.topAnchor.constraint(equalTo: newContainer.topAnchor),
+                newClipView.bottomAnchor.constraint(equalTo: newContainer.bottomAnchor),
+                newClipView.leadingAnchor.constraint(equalTo: newContainer.leadingAnchor),
+                newClipView.trailingAnchor.constraint(equalTo: newContainer.trailingAnchor)
             ])
         }
 
-        hostingController.view.translatesAutoresizingMaskIntoConstraints = false
-        clipView.addSubview(hostingController.view)
-        let heightConstraint = hostingController.view.heightAnchor.constraint(equalToConstant: currentHostHeight)
-        self.hostingHeightConstraint = heightConstraint
+        newHostingController.view.translatesAutoresizingMaskIntoConstraints = false
+        newClipView.addSubview(newHostingController.view)
+        let heightConstraint = newHostingController.view.heightAnchor.constraint(equalToConstant: currentHostHeight)
         NSLayoutConstraint.activate([
-            hostingController.view.topAnchor.constraint(equalTo: clipView.topAnchor),
-            hostingController.view.leadingAnchor.constraint(equalTo: clipView.leadingAnchor),
-            hostingController.view.widthAnchor.constraint(equalToConstant: panelWidth),
+            newHostingController.view.topAnchor.constraint(equalTo: newClipView.topAnchor),
+            newHostingController.view.leadingAnchor.constraint(equalTo: newClipView.leadingAnchor),
+            newHostingController.view.widthAnchor.constraint(equalToConstant: panelWidth),
             heightConstraint
         ])
+
+        self.panel = newPanel
+        self.containerView = newContainer
+        self.clipView = newClipView
+        self.hostingController = newHostingController
+        self.hostingHeightConstraint = heightConstraint
+        return (newPanel, newContainer)
+    }
+
+    private func scheduleIdleUITeardown() {
+        idleTeardownWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self,
+                  !self.viewModel.isPopoverVisible,
+                  !(self.panel?.isVisible ?? false) else {
+                return
+            }
+            self.hostingController?.view.removeFromSuperview()
+            self.hostingHeightConstraint = nil
+            self.hostingController = nil
+            self.clipView?.removeFromSuperview()
+            self.clipView = nil
+            self.panel?.contentView = nil
+            self.panel?.close()
+            self.panel = nil
+            self.containerView = nil
+            self.latestPreferredHeight = 0
+            self.uiState.lastReportedHeight = 0
+        }
+        idleTeardownWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0, execute: work)
     }
 
     private func currentPopoverScreen() -> NSScreen? {
@@ -297,7 +328,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
                 return screen
             }
         }
-        return panel.screen ?? NSScreen.main
+        return panel?.screen ?? NSScreen.main
     }
 
     private func makeRootHostView(maxBodyHeight: CGFloat) -> FixedTopPopoverHost {
@@ -328,18 +359,19 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     func updatePopoverHeight(_ preferredHeight: CGFloat) {
         let clamped = clampedPopoverHeight(preferredHeight)
         latestPreferredHeight = clamped
-        guard panel.isVisible, !isResizeCoalesced else { return }
+        guard let panel = panel, panel.isVisible, !isResizeCoalesced else { return }
 
         isResizeCoalesced = true
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             self.isResizeCoalesced = false
-            guard self.panel.isVisible else { return }
+            guard let panel = self.panel, panel.isVisible else { return }
             self.applyAnimatedPanelHeight(self.latestPreferredHeight)
         }
     }
 
     private func applyAnimatedPanelHeight(_ targetHeight: CGFloat) {
+        guard let panel = panel else { return }
         let clamped = clampedPopoverHeight(targetHeight)
         guard abs(currentHeight - clamped) > 1 || abs(panel.frame.height - clamped) > 1 else { return }
 
@@ -363,9 +395,10 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }, completionHandler: { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self = self,
+                      let panel = self.panel,
                       self.resizeGeneration == gen,
-                      self.panel.isVisible else { return }
-                self.panel.invalidateShadow()
+                      panel.isVisible else { return }
+                panel.invalidateShadow()
             }
         })
     }
@@ -449,7 +482,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
     }
 
     func togglePopover() {
-        if panel.isVisible {
+        if panel?.isVisible == true {
             closePopover()
         } else {
             showPopover()
@@ -490,15 +523,19 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
         if abs(screenMaxBody - lastMaxBodyHeight) > 1 {
             lastMaxBodyHeight = screenMaxBody
-            hostingController.rootView = makeRootHostView(maxBodyHeight: screenMaxBody)
+            hostingController?.rootView = makeRootHostView(maxBodyHeight: screenMaxBody)
         }
         return (screenMaxPanel, screenMaxBody)
     }
 
     func showPopover(tab: PopoverTab? = nil) {
+        idleTeardownWorkItem?.cancel()
+        idleTeardownWorkItem = nil
+
         if let tab = tab {
             viewModel.selectedTab = tab
         }
+        let (panel, containerView) = ensurePanelLoaded()
         onWillOpen?()
         guard let button = statusItem.button else { return }
 
@@ -513,7 +550,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
             currentHeight = initialHeight
             latestPreferredHeight = initialHeight
 
-            positionPanel(below: button)
+            positionPanel(below: button, panel: panel, containerView: containerView)
             panel.orderFrontRegardless()
             panel.makeKey()
             panel.makeFirstResponder(nil)
@@ -525,25 +562,28 @@ final class StatusBarController: NSObject, NSMenuDelegate {
                 currentHeight = updatedHeight
                 latestPreferredHeight = updatedHeight
             }
-            positionPanel(below: button)
+            positionPanel(below: button, panel: panel, containerView: containerView)
             panel.makeKeyAndOrderFront(nil)
             panel.makeFirstResponder(nil)
         }
     }
 
     func closePopover() {
-        guard panel.isVisible || viewModel.isPopoverVisible else { return }
+        let isVisible = panel?.isVisible == true || viewModel.isPopoverVisible
+        guard isVisible else { return }
         resizeGeneration &+= 1
         isResizeCoalesced = false
         currentTopY = nil
-        panel.orderOut(nil)
+        panel?.orderOut(nil)
         viewModel.isPopoverVisible = false
+        viewModel.runningApps = []
         removeDismissMonitors()
         onPopoverVisibilityChanged?(false)
+        scheduleIdleUITeardown()
     }
 
     func activateForTextInput() {
-        guard panel.isVisible else { return }
+        guard let panel = panel, panel.isVisible else { return }
         // Activate only in .accessory mode so typing works while preserving Full-Screen Spaces when .regular is active.
         if NSApp.activationPolicy() == .accessory {
             NSApp.activate(ignoringOtherApps: true)
@@ -551,7 +591,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         panel.makeKeyAndOrderFront(nil)
     }
 
-    private func positionPanel(below button: NSStatusBarButton) {
+    private func positionPanel(below button: NSStatusBarButton, panel: GhostPopoverPanel, containerView: NSView) {
         let topGap: CGFloat = 6
         let horizontalMargin: CGFloat = 8
 
@@ -605,9 +645,9 @@ final class StatusBarController: NSObject, NSMenuDelegate {
 
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self, self.panel.isVisible else { return }
+                guard let self = self, let panel = self.panel, panel.isVisible else { return }
                 let mouseLocation = NSEvent.mouseLocation
-                if self.panel.frame.contains(mouseLocation) {
+                if panel.frame.contains(mouseLocation) {
                     return
                 }
                 if let button = self.statusItem.button,
@@ -622,7 +662,7 @@ final class StatusBarController: NSObject, NSMenuDelegate {
         }
 
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard let self = self, self.panel.isVisible else { return event }
+            guard let self = self, let panel = self.panel, panel.isVisible else { return event }
             if event.keyCode == 53 {
                 self.closePopover()
                 return nil

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="132" height="20" role="img" aria-label="Dependencies: Zero">
+  <title>Dependencies: Zero</title>
+  <linearGradient id="s" x2="0" y2="100%">
+    <stop offset="0" stop-color="#bbb" stop-opacity=".1"/>
+    <stop offset="1" stop-opacity=".1"/>
+  </linearGradient>
+  <clipPath id="r">
+    <rect width="132" height="20" rx="3" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#r)">
+    <rect width="92" height="20" fill="#555"/>
+    <rect x="92" width="40" height="20" fill="#6E6E73"/>
+    <rect width="132" height="20" fill="url(#s)"/>
+  </g>
+  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="11">
+    <text aria-hidden="true" x="46" y="15" fill="#010101" fill-opacity=".3" textLength="78">Dependencies</text>
+    <text x="46" y="14" fill="#fff" textLength="78">Dependencies</text>
+    <text aria-hidden="true" x="112" y="15" fill="#010101" fill-opacity=".3" textLength="26">Zero</text>
+    <text x="112" y="14" fill="#fff" textLength="26">Zero</text>
+  </g>
+</svg>

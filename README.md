@@ -10,21 +10,22 @@
 
   <p>
     <a href="https://github.com/malikarpit/Ghost-Mode/actions/workflows/ci.yml"><img src="https://github.com/malikarpit/Ghost-Mode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest"><img src="https://img.shields.io/github/v/release/malikarpit/Ghost-Mode?label=Release&color=0A84FF" alt="Latest Release" /></a>
-    <img src="https://img.shields.io/badge/macOS-12.0%2B%20Apple%20Silicon%20%7C%2014.0%2B%20Intel-1D1D1F?logo=apple&logoColor=white" alt="macOS Support" />
-    <img src="https://img.shields.io/badge/Architecture-Universal%202%20(arm64%20%2B%20x86__64)-30D158" alt="Universal 2 Binary" />
-    <img src="https://img.shields.io/badge/Dependencies-Zero-6E6E73" alt="Zero Dependencies" />
-    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-F5A623" alt="MIT License" /></a>
+    <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest"><img src="assets/badges/release.svg" alt="Release v2.2.0" /></a>
+    <img src="assets/badges/macos.svg" alt="macOS 12.0+ Apple Silicon | 14.0+ Intel" />
+    <img src="assets/badges/architecture.svg" alt="Universal 2 Binary (arm64 + x86_64)" />
+    <img src="assets/badges/dependencies.svg" alt="Zero Dependencies" />
+    <a href="LICENSE"><img src="assets/badges/license.svg" alt="MIT License" /></a>
   </p>
 
   <p>
     <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest">
-      <img src="https://img.shields.io/badge/Download-GhostMode--Installer.dmg-0A84FF?style=for-the-badge&logo=apple&logoColor=white" alt="Download GhostMode-Installer.dmg" />
+      <img src="assets/badges/download-dmg.svg" alt="Download GhostMode-Installer.dmg" />
     </a>
   </p>
 
   <p>
     <a href="#features">Features</a> &middot;
+    <a href="#resource-management--system-impact">Resource Management</a> &middot;
     <a href="#closed-lid-privilege-modes">Privilege Modes</a> &middot;
     <a href="#installation">Installation</a> &middot;
     <a href="#architecture">Architecture</a> &middot;
@@ -48,39 +49,57 @@ MacBooks normally force sleep the moment you close the lid unless an external mo
 
 ## Features
 
-<table>
-  <tr>
-    <td valign="top" width="33%">
-      <h3>Session</h3>
-      <ul>
-        <li><strong>Timer Presets</strong>: <code>15m</code>, <code>30m</code>, <code>45m</code>, <code>1h</code>, <code>2h</code>, <code>4h</code>, <code>8h</code>, and Indefinite (<code>&infin;</code>)</li>
-        <li><strong>Live Extensions</strong>: <code>+15m</code>, <code>+30m</code>, <code>+1h</code>, <code>&infin;</code>, or natural custom input (<code>90m</code>, <code>1.5h</code>, <code>45</code>)</li>
-        <li><strong>Quick Display Actions</strong>: 1-click <strong>Turn Off Screen</strong> &amp; <strong>Screen Saver</strong></li>
-        <li><strong>Live Telemetry</strong>: Countdown bar, lid state, AC/battery %, thermal state, and <code>Kernel: Protected / Normal</code> badge</li>
-      </ul>
-    </td>
-    <td valign="top" width="33%">
-      <h3>Safety &amp; Isolation</h3>
-      <ul>
-        <li><strong>AC Power Only</strong>: Ends session if power adapter disconnects (debounced)</li>
-        <li><strong>Low Battery Cutoff</strong>: Auto-stops at <code>5%</code>, <code>10%</code>, <code>15%</code>, <code>20%</code>, or custom <code>1–50%</code></li>
-        <li><strong>Thermal Protection</strong>: Warns on sustained elevated heat; exits on critical pressure</li>
-        <li><strong>App Freeze &amp; Whitelist</strong>: Suspends idle GUI apps via <code>SIGSTOP</code>/<code>SIGCONT</code> while keeping whitelisted and non-running saved rules visible</li>
-        <li><strong>Audio App Rules</strong>: <em>All Except Blocked</em> or <em>Only Selected</em> via CoreAudio, IOKit &amp; WebKit/Cryptex ownership mapping</li>
-      </ul>
-    </td>
-    <td valign="top" width="33%">
-      <h3>Settings &amp; Control</h3>
-      <ul>
-        <li><strong>Default 1-Click Duration</strong> &amp; optional menu bar countdown badge</li>
-        <li><strong>Auto-Close Panel</strong> on start &amp; <strong>Auto-Start at Launch</strong></li>
-        <li><strong>Show in Dock</strong> toggle, Sound Notifications, and native <strong>Launch at Login</strong> (<code>SMAppService</code> / LaunchAgent)</li>
-        <li><strong>Passwordless Sudo</strong>: Hardened 1-click Setup &amp; clean Revoke</li>
-        <li><strong>Diagnostics &amp; Footprint</strong>: 1-click <strong>Copy Diagnostics</strong>, Reset Defaults, live CPU &amp; RAM readout</li>
-      </ul>
-    </td>
-  </tr>
-</table>
+### Session & Display Control
+
+- **Flexible Timers & Presets**: Start for `15m`, `30m`, `45m`, `1h`, `2h`, `4h`, `8h`, or Indefinite (`∞`).
+- **Live Extensions & Custom Input**: Add `+15m`, `+30m`, `+1h`, or `∞` mid-session, or type durations like `90m`, `1.5h`, or `45`.
+- **1-Click Display Actions**: **Turn Off Screen** (`pmset displaysleepnow` / `IODisplayWrangler`), trigger **Screen Saver**, or shut off the display automatically on lid close.
+- **Live Telemetry**: Compact session countdown bar alongside lid state, AC/battery percentage, thermal pressure, and `Kernel: Protected / Normal` status.
+
+### Automated Safety Guards
+
+- **AC Power Only**: Automatically ends an active keep-awake session (debounced) if the MagSafe/USB-C charger is disconnected.
+- **Low Battery Cutoff**: Auto-stops at `5%`, `10%`, `15%`, `20%`, or any custom `1–50%` threshold and restores normal system sleep.
+- **Thermal Pressure Protection**: Surfaces a warning on sustained elevated heat and exits keep-awake safely on critical thermal pressure.
+
+### Closed-Lid App Isolation & Audio Rules
+
+- **App Freeze (`SIGSTOP` / `SIGCONT`)**: Pauses idle GUI apps in RAM while keeping CLI tools, servers, AI agents, system daemons, and user-whitelisted apps active—with child-first freezing, parent-first resume, orphan recovery (`frozen_pids.json`), and async-signal-safe crash cleanup.
+- **Audio Ownership Rules**: Choose **All Except Blocked** or **Only Selected** using `CoreAudio` (`kAudioHardwarePropertyProcessObjectList`), `IOPMCopyAssertionsByProcess`, Cryptex path normalization, and `responsibility_get_pid_responsible_for_pid` so WebKit/Electron media helpers resolve to their owning browser or player.
+- **Persistent Rules**: Whitelisted and audio-rule apps remain visible in Preferences even when currently quit.
+
+### Settings, Diagnostics & Lifecycle
+
+- **Startup & Visibility**: Toggle **Default Duration**, menu bar countdown badge, **Auto-Close Panel**, **Auto-Start at Launch**, **Show in Dock**, sound notifications, and native **Launch at Login** (`SMAppService` / LaunchAgent).
+- **Passwordless Sudo Setup & Revoke**: Hardened 1-click installer/uninstaller scoped to `pmset` commands.
+- **Diagnostics & Reset**: Built-in **Copy Diagnostics**, Reset Defaults, and live Activity Monitor-matched CPU & `phys_footprint` RAM readout in Settings.
+
+---
+
+## Resource Management & System Impact
+
+Ghost Mode is designed to consume virtually **0% CPU** when sitting in the menu bar—even while an active closed-lid session is keeping macOS awake. Instead of background polling loops or repeated shell subprocesses, resource usage is tightly bounded around user interaction and kernel hardware callbacks.
+
+### How Ghost Mode Keeps Overhead Minimal
+
+- **Lazy UI Allocation & 5-Second Idle Teardown** (`StatusBarController`): At launch, Ghost Mode does **not** build its SwiftUI hosting hierarchy (`NSHostingController`), `GhostPopoverPanel`, or `NSGlassEffectView` / `NSVisualEffectView` surfaces until you click the menu bar icon. Closing the popover immediately clears cached app icons and releases the SwiftUI view controller, panel, and compositor backing layers after `5.0s` of inactivity.
+- **Visibility-Gated Refreshing** (`AppDelegate`): The `5.0s` UI refresh timer stops whenever the popover is hidden. Background ticks skip `NSRunningApplication` icon extraction, `CoreAudio`/IOPM audio enumeration, `sudo -n` checks, and CPU/RAM diagnostics while closed.
+- **Direct IOKit Queries Instead of Subprocesses** (`PowerManager` & `DisplayManager`): Kernel sleep state (`IOPMrootDomain` `"SleepDisabled"`), clamshell state (`AppleClamshellState`), AC/battery events (`IOPSNotificationCreateRunLoopSource`), and sleep callbacks (`IORegisterForSystemPower`) run in-process via C/IOKit APIs rather than spawning `/usr/bin/pmset -g` subprocesses.
+- **Event-Driven CoreAudio & Workspace Listeners** (`AppFreezer` & `AppDelegate`): On macOS 14+, closed-lid freeze/unfreeze reconciliation listens directly to CoreAudio process and output-running property notifications (`kAudioHardwarePropertyProcessObjectList` + `kAudioProcessPropertyIsRunningOutput`, debounced `150ms`) plus `NSWorkspace` launch/termination events—eliminating the former 2-second closed-lid polling timer (falling back to a relaxed `15s` check only on macOS 12–13).
+- **Accurate Footprint & Interval CPU Reporting** (`ProcessDiagnostics`): In-app diagnostics measure `task_vm_info_data_t.phys_footprint` (matching Activity Monitor's **Memory** column) and interval CPU deltas via `getrusage(RUSAGE_SELF)` + `CLOCK_UPTIME_RAW` rather than inflated VM/RSS totals or cumulative averages.
+
+### Approximate System Resource Effect
+
+Measured on Apple Silicon (`arm64`, macOS 26+) via macOS `footprint` and `ps`:
+
+| State | CPU Usage | Physical Footprint (`phys_footprint`) | CoreAnimation / GPU Layers | What Is Running |
+| --- | --- | --- | --- | --- |
+| **Background Idle (Launch / Session Active)** | **0.0%** | **~12 MB** | **80 KB** | Status bar item + IOKit RunLoop callbacks only (zero UI/SwiftUI objects allocated) |
+| **Popover Open (Active UI)** | **< 1% steady** *(~3% initial open burst)* | **~42–45 MB** | **~7.8 MB** | SwiftUI view graph, `NSGlassEffectView` surface, app icons, `5s` visible telemetry refresh |
+| **After Closing Popover (`> 5s` Teardown)** | **0.0%** | **~32 MB** *(cached malloc framework pages; macOS reclaimable as needed)* | **80 KB** | UI hierarchy, icons, and GPU glass backing stores completely released |
+| **Before Optimizations (Background Polling + Retained UI)** | *0.0–0.8%* | *~45 MB* | *~6.7 MB retained continuously* | Always-allocated UI, `2s` UI & closed-lid timers, periodic `pmset -g` subprocess forks |
+
+**Whole-System Impact When Lid Is Closed:** Ghost Mode itself adds negligible battery or CPU load (`0.0%` steady CPU, zero subprocess spawning between user actions). When **Turn Off Screen on Lid Close** and **Freeze Apps on Lid Close** are enabled, shutting down panel backlight power and pausing idle background GUI/Electron apps (`0%` CPU under `SIGSTOP`) substantially lowers total system wattage, battery drain, and chassis heat compared to keeping displays or idle foreground apps active while closed.
 
 ---
 
@@ -123,7 +142,7 @@ macOS requires `root` access to toggle kernel sleep (`pmset disablesleep 1/0`). 
 git clone https://github.com/malikarpit/Ghost-Mode.git
 cd Ghost-Mode
 
-# Build Universal 2 bundle (arm64 + x86_64) & run all 215 unit tests
+# Build Universal 2 bundle (arm64 + x86_64) & run all 222 unit tests
 make clean && make all && make test
 
 # Install to /Applications/Ghost Mode.app
@@ -172,7 +191,7 @@ flowchart LR
     AD --> AF["AppFreezer<br/>CoreAudio + IOPM + ResponsiblePID + SIGSTOP/SIGCONT"]
 ```
 
-- **Event-Driven Engine**: Hardware state reacts to native IOKit RunLoop callbacks (`IOPSNotificationCreateRunLoopSource`, `IOPMrootDomain` clamshell notifications, `IORegisterForSystemPower`) instead of busy polling.
+- **Event-Driven Engine**: Hardware, audio, and app lifecycle transitions react to native IOKit RunLoop callbacks (`IOPSNotificationCreateRunLoopSource`, `IOPMrootDomain` clamshell notifications, `IORegisterForSystemPower`), CoreAudio property listeners (`kAudioHardwarePropertyProcessObjectList`, `kAudioProcessPropertyIsRunningOutput`), and `NSWorkspace` launch/termination events instead of polling.
 - **Exact Audio Ownership**: Combines `CoreAudio` (`kAudioHardwarePropertyProcessObjectList`), `IOPMCopyAssertionsByProcess`, Cryptex path normalization, and `responsibility_get_pid_responsible_for_pid` so out-of-process WebKit/Electron media renderers map accurately to their owning browser or player.
 - **Single-Instance Guard**: Enforced via POSIX `flock` (`O_EXLOCK` semantics) with automatic menu reveal (`DistributedNotificationCenter`) when re-launched.
 

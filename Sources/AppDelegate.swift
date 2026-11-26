@@ -40,6 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var isPopoverRefreshInFlight = false
     private var pendingForcedSudoRefresh = false
     private var auxRefreshGeneration: UInt64 = 0
+    private var telemetryFollowupWorkItem: DispatchWorkItem?
 
     private enum ReconcileTrigger {
         case launchAdoption
@@ -73,11 +74,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         wireViewModelCallbacks()
+        viewModel.ghostMemMB = ProcessDiagnostics.getMemoryFootprintMB()
+        _ = ProcessDiagnostics.warmUpCPUBaselineIfStale(maxAgeSeconds: 0)
 
         statusBarController = StatusBarController(
             viewModel: viewModel,
             onWillOpen: { [weak self] in
-                self?.refreshPopoverData()
+                _ = ProcessDiagnostics.warmUpCPUBaselineIfStale(maxAgeSeconds: 8.0)
+                self?.refreshPopoverData(includeAuxiliary: true)
             },
             onPopoverVisibilityChanged: { [weak self] isVisible in
                 if isVisible {
@@ -240,6 +244,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         viewModel.onFocusPopover = { [weak self] in
             self?.statusBarController.activateForTextInput()
         }
+        viewModel.onSelectedTabChanged = { [weak self] tab in
+            guard let self = self, tab == .prefs else { return }
+            self.refreshPopoverData(forceSudoRefresh: true, includeAuxiliary: true)
+        }
     }
 
     // MARK: - Event Monitoring
@@ -308,8 +316,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         NSWorkspace.shared.notificationCenter.addObserver(
             self,
-            selector: #selector(handleWorkspaceDidLaunchApplication(_:)),
+            selector: #selector(handleWorkspaceAppLifecycleChanged(_:)),
             name: NSWorkspace.didLaunchApplicationNotification,
+            object: nil
+        )
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self,
+            selector: #selector(handleWorkspaceAppLifecycleChanged(_:)),
+            name: NSWorkspace.didTerminateApplicationNotification,
             object: nil
         )
 
@@ -375,7 +389,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         syncLidAndReconcile()
     }
 
-    @objc private func handleWorkspaceDidLaunchApplication(_ notification: Notification) {
+    @objc private func handleWorkspaceAppLifecycleChanged(_ notification: Notification) {
         guard viewModel.sessionMode.isActive,
               DisplayManager.shared.hasLid(),
               DisplayManager.shared.isLidClosed() else {
@@ -804,8 +818,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             stopClosedLidReconcileTimer()
             return
         }
+
+        if #available(macOS 14.0, *) {
+            // Zero-polling event-driven CoreAudio output listener on macOS 14+
+            closedLidReconcileTimer?.invalidate()
+            closedLidReconcileTimer = nil
+            AppFreezer.shared.startAudioActivityMonitor { [weak self] in
+                Task { @MainActor [weak self] in
+                    guard let self = self,
+                          self.viewModel.sessionMode.isActive,
+                          DisplayManager.shared.hasLid(),
+                          DisplayManager.shared.isLidClosed() else {
+                        self?.stopClosedLidReconcileTimer()
+                        return
+                    }
+                    self.reconcile(trigger: .freezePreferenceChanged)
+                }
+            }
+            return
+        }
+
         guard closedLidReconcileTimer == nil else { return }
-        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 15.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self,
                       self.viewModel.sessionMode.isActive,
@@ -822,6 +856,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopClosedLidReconcileTimer() {
+        AppFreezer.shared.stopAudioActivityMonitor()
         closedLidReconcileTimer?.invalidate()
         closedLidReconcileTimer = nil
     }
@@ -838,7 +873,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func startPopoverRefreshTimer() {
         stopPopoverRefreshTimer()
-        let timer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 5.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self = self, self.viewModel.isPopoverVisible else {
                     self?.stopPopoverRefreshTimer()
@@ -1084,7 +1119,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Popover & UI Data Refresh
 
-    private func refreshPopoverData(forceSudoRefresh: Bool = false) {
+    private func refreshPopoverData(forceSudoRefresh: Bool = false, includeAuxiliary: Bool? = nil) {
         if isPopoverRefreshInFlight {
             if forceSudoRefresh {
                 pendingForcedSudoRefresh = true
@@ -1093,16 +1128,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        let collectAuxiliary = includeAuxiliary ?? viewModel.isPopoverVisible
+        let collectPrefsTelemetry = collectAuxiliary && (viewModel.selectedTab == .prefs || forceSudoRefresh)
         isPopoverRefreshInFlight = true
         popoverRefreshGeneration &+= 1
         let generation = popoverRefreshGeneration
 
         Task.detached(priority: .userInitiated) { [weak self] in
             let snapshot = Self.captureSystemSnapshot(forceSudoRefresh: forceSudoRefresh)
-            let activeAudioPids = AppFreezer.shared.getActiveAudioPids()
-            let needsLoginApproval = LoginItemManager.needsApproval()
-            let ghostCPU = ProcessDiagnostics.getGhostModeCPUPercentage()
-            let ghostMemMB = ProcessDiagnostics.getMemoryFootprintMB()
+            let activeAudioPids: Set<pid_t> = collectAuxiliary ? AppFreezer.shared.getActiveAudioPids() : []
+            let needsLoginApproval = collectPrefsTelemetry ? LoginItemManager.needsApproval() : false
+            let cpuSample = collectPrefsTelemetry ? ProcessDiagnostics.sampleProcessCPU() : (percent: 0.0, needsFollowup: false)
+            let ghostMemMB = collectAuxiliary ? ProcessDiagnostics.getMemoryFootprintMB() : 0.0
 
             await MainActor.run { [weak self] in
                 guard let self = self else { return }
@@ -1115,18 +1152,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         count: AppFreezer.shared.frozenCount
                     )
                     self.viewModel.snapshot = updatedSnapshot
-                    self.applyAuxiliaryState(
-                        snapshot: updatedSnapshot,
-                        activeAudioPids: activeAudioPids,
-                        needsLoginApproval: needsLoginApproval,
-                        ghostCPU: ghostCPU,
-                        ghostMemMB: ghostMemMB
-                    )
+                    if collectAuxiliary {
+                        self.applyAuxiliaryState(
+                            snapshot: updatedSnapshot,
+                            activeAudioPids: activeAudioPids,
+                            needsLoginApproval: needsLoginApproval,
+                            ghostCPU: collectPrefsTelemetry ? cpuSample.percent : self.viewModel.ghostCPU,
+                            ghostMemMB: ghostMemMB,
+                            updatePrefsTelemetry: collectPrefsTelemetry
+                        )
+                        if collectPrefsTelemetry && cpuSample.needsFollowup {
+                            self.scheduleTelemetryWarmupFollowup()
+                        }
+                    } else {
+                        self.statusBarController.updateStatusButton(
+                            sessionMode: self.viewModel.sessionMode,
+                            snapshot: updatedSnapshot,
+                            showCountdown: Preferences.shared.showCountdownInMenuBar
+                        )
+                    }
                 }
 
                 if self.pendingForcedSudoRefresh {
                     self.pendingForcedSudoRefresh = false
-                    self.refreshPopoverData(forceSudoRefresh: true)
+                    self.refreshPopoverData(forceSudoRefresh: true, includeAuxiliary: includeAuxiliary)
                 }
             }
         }
@@ -1139,17 +1188,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             showCountdown: Preferences.shared.showCountdownInMenuBar
         )
 
+        guard viewModel.isPopoverVisible else { return }
+
+        let collectPrefsTelemetry = (viewModel.selectedTab == .prefs)
         auxRefreshGeneration &+= 1
         let generation = auxRefreshGeneration
 
         Task.detached(priority: .userInitiated) { [weak self] in
             let activeAudioPids = AppFreezer.shared.getActiveAudioPids()
-            let needsLoginApproval = LoginItemManager.needsApproval()
-            let ghostCPU = ProcessDiagnostics.getGhostModeCPUPercentage()
+            let needsLoginApproval = collectPrefsTelemetry ? LoginItemManager.needsApproval() : false
+            let cpuSample = collectPrefsTelemetry ? ProcessDiagnostics.sampleProcessCPU() : (percent: 0.0, needsFollowup: false)
             let ghostMemMB = ProcessDiagnostics.getMemoryFootprintMB()
 
             await MainActor.run { [weak self] in
-                guard let self = self, generation == self.auxRefreshGeneration else { return }
+                guard let self = self,
+                      generation == self.auxRefreshGeneration,
+                      self.viewModel.isPopoverVisible else { return }
                 let updatedSnapshot = self.snapshotWithFrozenCount(
                     self.viewModel.snapshot,
                     count: AppFreezer.shared.frozenCount
@@ -1159,11 +1213,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     snapshot: updatedSnapshot,
                     activeAudioPids: activeAudioPids,
                     needsLoginApproval: needsLoginApproval,
-                    ghostCPU: ghostCPU,
-                    ghostMemMB: ghostMemMB
+                    ghostCPU: collectPrefsTelemetry ? cpuSample.percent : self.viewModel.ghostCPU,
+                    ghostMemMB: ghostMemMB,
+                    updatePrefsTelemetry: collectPrefsTelemetry
                 )
+                if collectPrefsTelemetry && cpuSample.needsFollowup {
+                    self.scheduleTelemetryWarmupFollowup()
+                }
             }
         }
+    }
+
+    private func scheduleTelemetryWarmupFollowup() {
+        telemetryFollowupWorkItem?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self,
+                  self.viewModel.isPopoverVisible,
+                  self.viewModel.selectedTab == .prefs else {
+                return
+            }
+            self.refreshPopoverData(forceSudoRefresh: false, includeAuxiliary: true)
+        }
+        telemetryFollowupWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     private func applyAuxiliaryState(
@@ -1171,12 +1243,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         activeAudioPids: Set<pid_t>,
         needsLoginApproval: Bool,
         ghostCPU: Double,
-        ghostMemMB: Double
+        ghostMemMB: Double,
+        updatePrefsTelemetry: Bool
     ) {
         viewModel.runningApps = buildRunningAppEntries(activeAudioPids: activeAudioPids)
-        viewModel.needsLoginApproval = needsLoginApproval
-        viewModel.ghostCPU = ghostCPU
         viewModel.ghostMemMB = ghostMemMB
+        if updatePrefsTelemetry {
+            viewModel.needsLoginApproval = needsLoginApproval
+            viewModel.ghostCPU = ghostCPU
+        }
 
         statusBarController.updateStatusButton(
             sessionMode: viewModel.sessionMode,

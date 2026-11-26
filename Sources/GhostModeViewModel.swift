@@ -76,6 +76,7 @@ public final class GhostModeViewModel: ObservableObject {
     public var onToggleCountdown: (() -> Void)?
     public var onQuit: (() -> Void)?
     public var onFocusPopover: (() -> Void)?
+    public var onSelectedTabChanged: ((PopoverTab) -> Void)?
 
     public init(
         preferences: Preferences = .shared,

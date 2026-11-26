@@ -26,6 +26,15 @@ public final class AppFreezer {
 
     public private(set) var frozenRecords: [pid_t: FrozenProcessRecord] = [:]
 
+    // Event-driven CoreAudio output monitor (macOS 14.0+)
+    private let audioMonitorQueue = DispatchQueue(label: "com.arpit.GhostMode.audioMonitor", qos: .utility)
+    private var isAudioMonitorActive = false
+    private var audioMonitorChangeHandler: (() -> Void)?
+    private var audioProcessListListenerBlock: AudioObjectPropertyListenerBlock?
+    private var audioProcessOutputListenerBlock: AudioObjectPropertyListenerBlock?
+    private var monitoredAudioProcessObjects: Set<AudioObjectID> = []
+    private var pendingAudioDebounceWorkItem: DispatchWorkItem?
+
     public var frozenCount: Int {
         frozenRecords.count
     }
@@ -294,9 +303,154 @@ public final class AppFreezer {
 
     // MARK: - Dynamic Audio Detection
 
+    /// Computes which CoreAudio process objects were added or removed since the last snapshot.
+    public static func computeAudioProcessMonitorDiff(
+        current: Set<AudioObjectID>,
+        desired: Set<AudioObjectID>
+    ) -> (added: Set<AudioObjectID>, removed: Set<AudioObjectID>) {
+        (added: desired.subtracting(current), removed: current.subtracting(desired))
+    }
+
+    /// Starts event-driven CoreAudio process/output monitoring (macOS 14.0+).
+    /// Falls back to no-op on macOS 12–13 where `AppDelegate` uses a relaxed fallback timer.
+    public func startAudioActivityMonitor(
+        debounceSeconds: TimeInterval = 0.15,
+        onChange: @escaping () -> Void
+    ) {
+        guard #available(macOS 14.0, *) else { return }
+        audioMonitorQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.audioMonitorChangeHandler = onChange
+            guard !self.isAudioMonitorActive else { return }
+            self.isAudioMonitorActive = true
+
+            let systemObject = AudioObjectID(kAudioObjectSystemObject)
+            var processListAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyProcessObjectList,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+
+            let listBlock: AudioObjectPropertyListenerBlock = { [weak self] _, _ in
+                guard let self = self, #available(macOS 14.0, *) else { return }
+                self.syncAudioProcessListenersOnQueue()
+                self.scheduleAudioChangeNotificationOnQueue(debounceSeconds: debounceSeconds)
+            }
+            self.audioProcessListListenerBlock = listBlock
+
+            if AudioObjectHasProperty(systemObject, &processListAddress) {
+                _ = AudioObjectAddPropertyListenerBlock(
+                    systemObject,
+                    &processListAddress,
+                    self.audioMonitorQueue,
+                    listBlock
+                )
+            }
+
+            self.audioProcessOutputListenerBlock = { [weak self] _, _ in
+                guard let self = self else { return }
+                self.scheduleAudioChangeNotificationOnQueue(debounceSeconds: debounceSeconds)
+            }
+
+            self.syncAudioProcessListenersOnQueue()
+        }
+    }
+
+    /// Stops all CoreAudio property listeners registered by `startAudioActivityMonitor`.
+    public func stopAudioActivityMonitor() {
+        guard #available(macOS 14.0, *) else { return }
+        audioMonitorQueue.async { [weak self] in
+            guard let self = self else { return }
+            self.isAudioMonitorActive = false
+            self.pendingAudioDebounceWorkItem?.cancel()
+            self.pendingAudioDebounceWorkItem = nil
+            self.audioMonitorChangeHandler = nil
+
+            let systemObject = AudioObjectID(kAudioObjectSystemObject)
+            if let listBlock = self.audioProcessListListenerBlock {
+                var processListAddress = AudioObjectPropertyAddress(
+                    mSelector: kAudioHardwarePropertyProcessObjectList,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                _ = AudioObjectRemovePropertyListenerBlock(
+                    systemObject,
+                    &processListAddress,
+                    self.audioMonitorQueue,
+                    listBlock
+                )
+                self.audioProcessListListenerBlock = nil
+            }
+
+            if let outputBlock = self.audioProcessOutputListenerBlock {
+                var outputAddress = AudioObjectPropertyAddress(
+                    mSelector: kAudioProcessPropertyIsRunningOutput,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                var runningAddress = AudioObjectPropertyAddress(
+                    mSelector: kAudioProcessPropertyIsRunning,
+                    mScope: kAudioObjectPropertyScopeGlobal,
+                    mElement: kAudioObjectPropertyElementMain
+                )
+                for processObj in self.monitoredAudioProcessObjects {
+                    _ = AudioObjectRemovePropertyListenerBlock(processObj, &outputAddress, self.audioMonitorQueue, outputBlock)
+                    _ = AudioObjectRemovePropertyListenerBlock(processObj, &runningAddress, self.audioMonitorQueue, outputBlock)
+                }
+            }
+            self.monitoredAudioProcessObjects.removeAll()
+            self.audioProcessOutputListenerBlock = nil
+        }
+    }
+
     @available(macOS 14.0, *)
-    private func getCoreAudioActiveOutputPids() -> Set<pid_t> {
-        var result = Set<pid_t>()
+    private func syncAudioProcessListenersOnQueue() {
+        guard isAudioMonitorActive, let outputBlock = audioProcessOutputListenerBlock else { return }
+        let desired = Set(fetchCurrentAudioProcessObjects())
+        let diff = Self.computeAudioProcessMonitorDiff(current: monitoredAudioProcessObjects, desired: desired)
+
+        var outputAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyIsRunningOutput,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        var runningAddress = AudioObjectPropertyAddress(
+            mSelector: kAudioProcessPropertyIsRunning,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+
+        for removedObj in diff.removed {
+            _ = AudioObjectRemovePropertyListenerBlock(removedObj, &outputAddress, audioMonitorQueue, outputBlock)
+            _ = AudioObjectRemovePropertyListenerBlock(removedObj, &runningAddress, audioMonitorQueue, outputBlock)
+        }
+
+        for addedObj in diff.added {
+            if AudioObjectHasProperty(addedObj, &outputAddress) {
+                _ = AudioObjectAddPropertyListenerBlock(addedObj, &outputAddress, audioMonitorQueue, outputBlock)
+            } else if AudioObjectHasProperty(addedObj, &runningAddress) {
+                _ = AudioObjectAddPropertyListenerBlock(addedObj, &runningAddress, audioMonitorQueue, outputBlock)
+            }
+        }
+
+        monitoredAudioProcessObjects = desired
+    }
+
+    private func scheduleAudioChangeNotificationOnQueue(debounceSeconds: TimeInterval) {
+        guard isAudioMonitorActive else { return }
+        pendingAudioDebounceWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self = self, self.isAudioMonitorActive, let handler = self.audioMonitorChangeHandler else {
+                return
+            }
+            DispatchQueue.main.async(execute: handler)
+        }
+        pendingAudioDebounceWorkItem = workItem
+        audioMonitorQueue.asyncAfter(deadline: .now() + max(0.05, debounceSeconds), execute: workItem)
+    }
+
+    @available(macOS 14.0, *)
+    private func fetchCurrentAudioProcessObjects() -> [AudioObjectID] {
         let systemObject = AudioObjectID(kAudioObjectSystemObject)
         var processListAddress = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyProcessObjectList,
@@ -304,23 +458,29 @@ public final class AppFreezer {
             mElement: kAudioObjectPropertyElementMain
         )
         guard AudioObjectHasProperty(systemObject, &processListAddress) else {
-            return result
+            return []
         }
 
         var dataSize: UInt32 = 0
         guard AudioObjectGetPropertyDataSize(systemObject, &processListAddress, 0, nil, &dataSize) == noErr,
               dataSize > 0 else {
-            return result
+            return []
         }
 
         let count = Int(dataSize) / MemoryLayout<AudioObjectID>.stride
         var processObjects = [AudioObjectID](repeating: 0, count: count)
         guard AudioObjectGetPropertyData(systemObject, &processListAddress, 0, nil, &dataSize, &processObjects) == noErr else {
-            return result
+            return []
         }
 
         let actualCount = Int(dataSize) / MemoryLayout<AudioObjectID>.stride
-        for processObj in processObjects.prefix(actualCount) {
+        return Array(processObjects.prefix(actualCount))
+    }
+
+    @available(macOS 14.0, *)
+    private func getCoreAudioActiveOutputPids() -> Set<pid_t> {
+        var result = Set<pid_t>()
+        for processObj in fetchCurrentAudioProcessObjects() {
             var isOutputRunning = false
             var outputAddress = AudioObjectPropertyAddress(
                 mSelector: kAudioProcessPropertyIsRunningOutput,

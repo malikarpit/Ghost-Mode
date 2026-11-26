@@ -49,6 +49,18 @@ public final class PowerManager {
     // MARK: - pmset & Sudo Management
 
     public func checkLidSleepDisabled() -> Bool {
+        let rootDomain = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPMrootDomain"))
+        if rootDomain != IO_OBJECT_NULL {
+            defer { IOObjectRelease(rootDomain) }
+            if let propRef = IORegistryEntryCreateCFProperty(rootDomain, "SleepDisabled" as CFString, kCFAllocatorDefault, 0) {
+                let prop = propRef.takeRetainedValue()
+                if let b = prop as? Bool { return b }
+                if let num = prop as? NSNumber { return num.boolValue }
+                if CFGetTypeID(prop) == CFBooleanGetTypeID() {
+                    return CFBooleanGetValue((prop as! CFBoolean))
+                }
+            }
+        }
         let (output, _) = runProcess("/usr/bin/pmset", arguments: ["-g"])
         return output.range(of: #"SleepDisabled\s+1"#, options: .regularExpression) != nil
     }

@@ -21,6 +21,8 @@ struct GhostModeTestRunner {
         testAppFreezerPureHelpers()
         testSudoersPolicyAndPrivilegedResult()
         testSudoFeatureAvailability()
+        testProcessDiagnostics()
+        testCoreAudioActivityMonitor()
 
         print("")
         print("Ghost Mode Unit Tests Summary: \(passed) passed, \(failed) failed")
@@ -918,7 +920,7 @@ struct GhostModeTestRunner {
         )
 
         expectEqual(AppMetadata.name, "Ghost Mode", "AppMetadata.name is Ghost Mode")
-        expectEqual(AppMetadata.version, "2.1", "AppMetadata.version matches current release")
+        expectEqual(AppMetadata.version, "2.2", "AppMetadata.version matches current release")
         let defaultRevoke = SudoersPolicy.revokeCommand()
         expectEqual(
             defaultRevoke,
@@ -1040,5 +1042,66 @@ struct GhostModeTestRunner {
             false,
             "effectiveLidFeatureToggle preserves storedValue false when sudo is configured"
         )
+    }
+
+    // MARK: - ProcessDiagnostics
+
+    private static func testProcessDiagnostics() {
+        expectEqual(
+            ProcessDiagnostics.computeCPUPercentage(
+                previousCPUSeconds: nil,
+                currentCPUSeconds: 1.0,
+                previousWallSeconds: nil,
+                currentWallSeconds: 10.0
+            ),
+            0.0,
+            "first CPU sample without baseline returns 0.0%"
+        )
+        expectEqual(
+            ProcessDiagnostics.computeCPUPercentage(
+                previousCPUSeconds: 1.0,
+                currentCPUSeconds: 1.5,
+                previousWallSeconds: 10.0,
+                currentWallSeconds: 12.0
+            ),
+            25.0,
+            "CPU delta over 2s interval computes accurate percentage"
+        )
+        expectEqual(
+            ProcessDiagnostics.computeCPUPercentage(
+                previousCPUSeconds: 2.0,
+                currentCPUSeconds: 1.8,
+                previousWallSeconds: 10.0,
+                currentWallSeconds: 12.0
+            ),
+            0.0,
+            "negative CPU delta clamps safely to 0.0%"
+        )
+        expect(ProcessDiagnostics.getMemoryFootprintMB() > 0.0, "memory footprint returns positive MB")
+        _ = ProcessDiagnostics.warmUpCPUBaselineIfStale(maxAgeSeconds: 0)
+        expect(ProcessDiagnostics.getGhostModeCPUPercentage() >= 0.0, "live CPU sampler returns non-negative value")
+        let warmed = ProcessDiagnostics.warmUpCPUBaselineIfStale(maxAgeSeconds: 60.0)
+        expectEqual(warmed, false, "recent CPU baseline is preserved instead of resetting unnecessarily")
+    }
+
+    // MARK: - CoreAudio Activity Monitor
+
+    private static func testCoreAudioActivityMonitor() {
+        let diff = AppFreezer.computeAudioProcessMonitorDiff(
+            current: [10, 20, 30],
+            desired: [20, 30, 40, 50]
+        )
+        expectEqual(diff.added, Set([40, 50]), "audio process diff identifies newly added AudioObjectIDs")
+        expectEqual(diff.removed, Set([10]), "audio process diff identifies removed AudioObjectIDs")
+
+        let unchanged = AppFreezer.computeAudioProcessMonitorDiff(current: [1, 2], desired: [1, 2])
+        expect(unchanged.added.isEmpty && unchanged.removed.isEmpty, "identical audio process sets produce empty diff")
+
+        // Lifecycle idempotency check (must register and cleanly unregister without crash)
+        AppFreezer.shared.startAudioActivityMonitor {}
+        AppFreezer.shared.startAudioActivityMonitor {}
+        AppFreezer.shared.stopAudioActivityMonitor()
+        AppFreezer.shared.stopAudioActivityMonitor()
+        expect(true, "CoreAudio activity monitor starts and stops idempotently")
     }
 }

@@ -26,6 +26,7 @@ TEST_SOURCES = \
 	Sources/DurationHelpers.swift \
 	Sources/SafetyControllers.swift \
 	Sources/AppFreezer.swift \
+	Sources/ProcessDiagnostics.swift \
 	Tests/GhostModeTests.swift
 
 all: $(APP_BUNDLE)

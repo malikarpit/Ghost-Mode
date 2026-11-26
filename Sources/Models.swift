@@ -11,7 +11,7 @@ import Foundation
 
 public struct AppMetadata {
     public static let name = "Ghost Mode"
-    public static let version = "2.1"
+    public static let version = "2.2"
     public static let author = "Arpit"
     public static let copyright = "Copyright © 2026 Arpit. All rights reserved."
     public static let digitalSignature = "Signed by Arpit (com.arpit.GhostMode)"

@@ -1024,6 +1024,7 @@ private struct HeaderBarView: View {
         if tab == .safety {
             uiState.safetyRoute = .root
         }
+        viewModel.onSelectedTabChanged?(tab)
     }
 
     private func tabLabel(_ tab: PopoverTab, selected: Bool) -> some View {
