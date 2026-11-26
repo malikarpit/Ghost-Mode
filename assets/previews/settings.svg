@@ -110,33 +110,33 @@
   <g filter="url(#btnShadow)">
     <rect x="152.0" y="140.0" width="51.4" height="25.0" rx="12.5" fill="url(#glassPill)"/>
     <rect x="152.5" y="140.5" width="50.4" height="24.0" rx="12.0" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="177.7" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">15m</text>
   </g>
+  <text x="177.7" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">15m</text>
   <g filter="url(#btnShadow)">
     <rect x="208.4" y="140.0" width="51.4" height="25.0" rx="12.5" fill="url(#glassPill)"/>
     <rect x="208.9" y="140.5" width="50.4" height="24.0" rx="12.0" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="234.1" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">30m</text>
   </g>
+  <text x="234.1" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">30m</text>
   <g filter="url(#btnShadow)">
     <rect x="264.8" y="140.0" width="51.4" height="25.0" rx="12.5" fill="url(#bluePill)"/>
     <rect x="265.3" y="140.5" width="50.4" height="24.0" rx="12.0" fill="none" stroke="url(#blueRim)" stroke-width="1"/>
-    <text x="290.5" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#FFFFFF">1h</text>
   </g>
+  <text x="290.5" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#FFFFFF">1h</text>
   <g filter="url(#btnShadow)">
     <rect x="321.2" y="140.0" width="51.4" height="25.0" rx="12.5" fill="url(#glassPill)"/>
     <rect x="321.7" y="140.5" width="50.4" height="24.0" rx="12.0" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="346.9" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">2h</text>
   </g>
+  <text x="346.9" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">2h</text>
   <g filter="url(#btnShadow)">
     <rect x="377.6" y="140.0" width="51.4" height="25.0" rx="12.5" fill="url(#glassPill)"/>
     <rect x="378.1" y="140.5" width="50.4" height="24.0" rx="12.0" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="403.3" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">4h</text>
   </g>
+  <text x="403.3" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">4h</text>
   <g filter="url(#btnShadow)">
     <rect x="434.0" y="140.0" width="62.0" height="25.0" rx="12.5" fill="url(#glassPill)"/>
     <rect x="434.5" y="140.5" width="61.0" height="24.0" rx="12.0" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="465.0" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">Custom</text>
   </g>
+  <text x="465.0" y="156.3" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#F5F5F7">Custom</text>
   <rect x="142" y="186" width="364" height="198" rx="12" fill="url(#cardFill)"/>
   <rect x="142.5" y="186.5" width="363" height="197" rx="11.5" fill="none" stroke="url(#cardRim)" stroke-width="1"/>
   <g transform="translate(152.0,196.5)" stroke="#98989D" stroke-width="1.25" fill="none" stroke-linecap="round"><path d="M1.8 3.6H11.2M1.8 6.8H11.2M1.8 10.0H11.2"/><circle cx="4.5" cy="3.6" r="1.1" fill="#232426"/><circle cx="8.5" cy="6.8" r="1.1" fill="#232426"/><circle cx="5.4" cy="10.0" r="1.1" fill="#232426"/></g>
@@ -173,8 +173,8 @@
   <g filter="url(#btnShadow)">
     <rect x="420.0" y="406.0" width="76.0" height="24.0" rx="12.0" fill="url(#glassPill)"/>
     <rect x="420.5" y="406.5" width="75.0" height="23.0" rx="11.5" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="458.0" y="421.9" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#F5F5F7">Revoke...</text>
   </g>
+  <text x="458.0" y="421.9" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#F5F5F7">Revoke...</text>
   <rect x="142" y="452" width="364" height="68" rx="12" fill="url(#cardFill)"/>
   <rect x="142.5" y="452.5" width="363" height="67" rx="11.5" fill="none" stroke="url(#cardRim)" stroke-width="1"/>
   <g transform="translate(152.0,463.0)" stroke="#98989D" stroke-width="1.15" fill="none"><rect x="3.2" y="3.2" width="6.6" height="6.6" rx="1.1"/><rect x="5.0" y="5.0" width="3.0" height="3.0" rx="0.4" fill="#98989D" stroke="none"/><path d="M4.9 1.6V3.1M8.1 1.6V3.1M4.9 9.9V11.4M8.1 9.9V11.4M1.6 4.9H3.1M1.6 8.1H3.1M9.9 4.9H11.4M9.9 8.1H11.4" stroke-linecap="round"/></g>
@@ -184,22 +184,22 @@
   <g filter="url(#btnShadow)">
     <rect x="152.0" y="488.0" width="169.0" height="24.0" rx="12.0" fill="url(#glassPill)"/>
     <rect x="152.5" y="488.5" width="168.0" height="23.0" rx="11.5" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="236.5" y="503.9" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#F5F5F7">Copy Diagnostics</text>
   </g>
+  <text x="236.5" y="503.9" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#F5F5F7">Copy Diagnostics</text>
   <g filter="url(#btnShadow)">
     <rect x="327.0" y="488.0" width="169.0" height="24.0" rx="12.0" fill="url(#glassPill)"/>
     <rect x="327.5" y="488.5" width="168.0" height="23.0" rx="11.5" fill="none" stroke="rgba(255,69,58,0.38)" stroke-width="1"/>
     <rect x="327.5" y="488.5" width="168.0" height="23.0" rx="11.5" fill="none" stroke="url(#glassRim)" stroke-width="1"/>
-    <text x="411.5" y="503.9" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#FF7A70">Reset Defaults</text>
   </g>
+  <text x="411.5" y="503.9" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="600" fill="#FF7A70">Reset Defaults</text>
   <line x1="142" y1="530" x2="506" y2="530" stroke="#FFFFFF" stroke-opacity="0.10" stroke-width="1"/>
   <text x="142" y="551.5" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="400" fill="#98989D">v2.2.2 · by Arpit</text>
   <text x="434" y="551.5" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#98989D">GitHub · Report</text>
   <g filter="url(#btnShadow)">
     <rect x="442" y="537" width="64" height="22" rx="11" fill="#FFFFFF" fill-opacity="0.06"/>
     <rect x="442.5" y="537.5" width="63" height="21" rx="10.5" fill="none" stroke="#FF453A" stroke-opacity="0.38" stroke-width="1"/>
-    <text x="474" y="551.2" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#FF7A70">Quit ⌘Q</text>
   </g>
+  <text x="474" y="551.2" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', system-ui, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" font-weight="500" fill="#FF7A70">Quit ⌘Q</text>
   <g>
     <line x1="68" y1="146.0" x2="131" y2="146.0" stroke="#60A5FA" stroke-opacity="0.7" stroke-width="1.25" stroke-dasharray="3 2.5"/>
     <circle cx="131" cy="146.0" r="2.4" fill="#60A5FA"/>

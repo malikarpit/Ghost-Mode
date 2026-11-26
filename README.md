@@ -57,8 +57,8 @@ MacBooks normally force sleep the moment you close the lid unless an external mo
 > Full screen-by-screen vector walkthrough of every tab and control: [**USER_GUIDE.md**](USER_GUIDE.md)
 
 <p align="center">
-  <img src="assets/previews/session-active.svg" alt="Ghost Mode Active Session" width="410" />
-  <img src="assets/previews/safety.svg" alt="Ghost Mode Safety Controls" width="410" />
+  <img src="assets/previews/readme-session.svg" alt="Ghost Mode Active Session" width="410" />
+  <img src="assets/previews/readme-safety.svg" alt="Ghost Mode Safety Controls" width="410" />
 </p>
 
 ---
@@ -69,9 +69,9 @@ Built to sit at **0% steady CPU** in your menu bar—using event callbacks inste
 
 | State | CPU | RAM (`phys_footprint`) | Active Work |
 | --- | --- | --- | --- |
-| **Idle / Active Session** | **0.0%** | **~12 MB** *(80 KB GPU)* | Menu bar item + IOKit RunLoop callbacks only |
+| **Idle / Active Session** | **0.0%** | **~36 MB** *(80 KB GPU)* | Menu bar item + IOKit RunLoop callbacks only |
 | **Popover Open** | **< 1%** *(~3% burst)* | **~42–45 MB** *(~7.8 MB GPU)* | Liquid Glass SwiftUI UI, app icons, `5s` visible refresh |
-| **Closed (`> 5s` teardown)** | **0.0%** | **~32 MB** *(80 KB GPU)* | UI views, icons, and compositor surfaces released |
+| **Closed (`> 5s` teardown)** | **0.0%** | **~36 MB** *(80 KB GPU)* | UI views, icons, and compositor surfaces released |
 
 - **Lazy UI & 5s Teardown**: Allocates the panel/SwiftUI host only when opened and releases views, icons, and glass layers `5s` after closing.
 - **Visibility-Gated Work**: Skips icon loading, audio scans, `sudo -n` checks, and telemetry whenever hidden.
