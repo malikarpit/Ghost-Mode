@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="356" height="30" role="img" aria-label="Download GhostMode-Installer.dmg">
-  <title>Download GhostMode-Installer.dmg (v2.2.1)</title>
+  <title>Download GhostMode-Installer.dmg (v2.2.2)</title>
   <linearGradient id="g" x2="0" y2="100%">
     <stop offset="0" stop-color="#fff" stop-opacity=".12"/>
     <stop offset="1" stop-color="#000" stop-opacity=".12"/>
@@ -17,6 +17,6 @@
   </g>
   <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="10.5" letter-spacing="0.8">
     <text x="64" y="18.5" font-weight="600" textLength="66">DOWNLOAD</text>
-    <text x="232" y="18.5" font-weight="700" textLength="222">GHOSTMODE-INSTALLER.DMG (v2.2.1)</text>
+    <text x="232" y="18.5" font-weight="700" textLength="222">GHOSTMODE-INSTALLER.DMG (v2.2.2)</text>
   </g>
 </svg>

@@ -24,6 +24,7 @@ struct GhostModeTestRunner {
         testProcessDiagnostics()
         testCoreAudioActivityMonitor()
         testNotificationsAndGhostIconRendering()
+        testAudioAppCatalogAndRecentAudioHistory()
 
         print("")
         print("Ghost Mode Unit Tests Summary: \(passed) passed, \(failed) failed")
@@ -762,6 +763,84 @@ struct GhostModeTestRunner {
             "protects /Library/Apple system components from freezing"
         )
 
+        // App-owned WebKit GPU/WebContent helpers vs shared system daemons
+        let safariWebKitGPU = "/System/Volumes/Preboot/Cryptexes/Incoming/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.GPU.xpc/Contents/MacOS/com.apple.WebKit.GPU"
+        let safariWebContent = "/System/Volumes/Preboot/Cryptexes/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.WebContent.xpc/Contents/MacOS/com.apple.WebKit.WebContent"
+        let safariWebKitNet = "/System/Volumes/Preboot/Cryptexes/Incoming/OS/System/Library/Frameworks/WebKit.framework/Versions/A/XPCServices/com.apple.WebKit.Networking.xpc/Contents/MacOS/com.apple.WebKit.Networking"
+        let safariPlatformHelper = "/System/Volumes/Preboot/Cryptexes/OS/System/Library/PrivateFrameworks/SafariPlatformSupport.framework/Versions/A/XPCServices/com.apple.SafariPlatformSupport.Helper.xpc/Contents/MacOS/com.apple.SafariPlatformSupport.Helper"
+
+        expectEqual(
+            AppFreezer.isFreezeableAppOwnedSystemHelperExecutablePath(safariWebKitGPU),
+            true,
+            "recognizes Cryptex WebKit.GPU audio/media host as freezeable when owned by frozen browser"
+        )
+        expectEqual(
+            AppFreezer.isFreezeableAppOwnedSystemHelperExecutablePath(safariWebContent),
+            true,
+            "recognizes Cryptex WebKit.WebContent renderer as freezeable when owned by frozen browser"
+        )
+        expectEqual(
+            AppFreezer.isFreezeableAppOwnedSystemHelperExecutablePath(safariWebKitNet),
+            false,
+            "does not freeze WebKit.Networking daemon directly"
+        )
+        expectEqual(
+            AppFreezer.isFreezeableAppOwnedSystemHelperExecutablePath(safariPlatformHelper),
+            false,
+            "does not treat SafariPlatformSupport private framework helper as freezeable"
+        )
+        expectEqual(
+            AppFreezer.isHelperExecutableEligibleForFreeze(executablePath: safariWebKitGPU, isOwnedByFreezeTargetApp: true),
+            true,
+            "freezes Safari-owned WebKit.GPU audio helper when Safari itself is frozen/excluded from audio"
+        )
+        expectEqual(
+            AppFreezer.isHelperExecutableEligibleForFreeze(executablePath: safariWebKitGPU, isOwnedByFreezeTargetApp: false),
+            false,
+            "never freezes WebKit.GPU without verified ownership by a targeted frozen app"
+        )
+        expectEqual(
+            AppFreezer.isHelperExecutableEligibleForFreeze(executablePath: "/usr/sbin/coreaudiod", isOwnedByFreezeTargetApp: true),
+            false,
+            "never freezes core system audio daemon even if referenced"
+        )
+        expectEqual(
+            AppFreezer.shouldFreezeApp(
+                bundleID: "com.apple.Safari",
+                appName: "Safari",
+                executablePath: "/System/Volumes/Preboot/Cryptexes/App/System/Applications/Safari.app/Contents/MacOS/Safari",
+                systemProtectedIdentifiers: AppFreezer.shared.systemProtectedIdentifiers,
+                whitelist: [],
+                keepAudio: true,
+                isProducingAudio: true,
+                audioMode: .allowOnlySelected,
+                blockedAudioApps: [],
+                allowedAudioApps: ["com.spotify.client"]
+            ),
+            true,
+            "unselected Safari freezes even while Spotify is selected and both produce audio"
+        )
+
+        // CoreAudio macOS 14+ active output resolution vs legacy IOKit assertion fallback
+        expectEqual(
+            AppFreezer.resolveActiveAudioPids(
+                coreAudioPids: [48733],
+                iokitAudioPids: [48733, 90226],
+                supportsCoreAudioProcessList: true
+            ),
+            Set<pid_t>([48733]),
+            "on macOS 14+, CoreAudio active output is authoritative so paused apps are not kept alive by lingering coreaudiod assertions"
+        )
+        expectEqual(
+            AppFreezer.resolveActiveAudioPids(
+                coreAudioPids: [],
+                iokitAudioPids: [48733],
+                supportsCoreAudioProcessList: false
+            ),
+            Set<pid_t>([48733]),
+            "on macOS 12-13 without CoreAudio process list, IOKit audio assertions act as fallback"
+        )
+
         // Core protected bundle identifier checks
         expect(
             !AppFreezer.shared.systemProtectedIdentifiers.contains("com.google.antigravity-ide"),
@@ -921,7 +1000,7 @@ struct GhostModeTestRunner {
         )
 
         expectEqual(AppMetadata.name, "Ghost Mode", "AppMetadata.name is Ghost Mode")
-        expectEqual(AppMetadata.version, "2.2.1", "AppMetadata.version matches current release")
+        expectEqual(AppMetadata.version, "2.2.2", "AppMetadata.version matches current release")
         let defaultRevoke = SudoersPolicy.revokeCommand()
         expectEqual(
             defaultRevoke,
@@ -1134,5 +1213,207 @@ struct GhostModeTestRunner {
 
         expect(!GhostVectorGeometry.filledSilhouetteWithCutouts(stealth: false).isEmpty, "menu bar awake ghost path is non-empty")
         expect(!GhostVectorGeometry.bodyPath(stealth: false).isEmpty, "menu bar resting ghost path is non-empty")
+    }
+
+    // MARK: - Audio App Catalog & Recent Audio History
+
+    private static func testAudioAppCatalogAndRecentAudioHistory() {
+        // 1. Dedicated music apps preset excludes browsers
+        expect(
+            !AudioAppCatalog.isPresetDedicatedAudioApp(bundleIdentifier: "com.apple.Safari"),
+            "Safari is excluded from dedicated music app presets"
+        )
+        expect(
+            !AudioAppCatalog.isPresetDedicatedAudioApp(bundleIdentifier: "com.google.Chrome"),
+            "Chrome is excluded from dedicated music app presets"
+        )
+        expect(
+            AudioAppCatalog.isPresetDedicatedAudioApp(bundleIdentifier: "com.spotify.client"),
+            "Spotify is included in dedicated music app presets"
+        )
+        expect(
+            AudioAppCatalog.isPresetDedicatedAudioApp(bundleIdentifier: "com.apple.Music"),
+            "Apple Music is included in dedicated music app presets"
+        )
+
+        // 2. discoverInstalledPresetAudioApps skips uninstalled apps & includes resolved installed ones
+        let discovered = AudioAppCatalog.discoverInstalledPresetAudioApps { bundleID in
+            switch bundleID {
+            case "com.spotify.client":
+                return (displayName: "Spotify", icon: nil)
+            case "com.apple.Music":
+                return (displayName: "Music", icon: nil)
+            default:
+                return nil
+            }
+        }
+        expectEqual(discovered.count, 2, "discoverInstalledPresetAudioApps skips uninstalled presets")
+        expectEqual(
+            discovered.map { $0.bundleIdentifier },
+            ["com.apple.Music", "com.spotify.client"],
+            "discoverInstalledPresetAudioApps sorts resolved apps by displayName"
+        )
+
+        // 3. Appearing in presets does NOT auto-allow in Only Selected mode
+        let presetOnlySelectedState = AudioAppCatalog.effectiveAudioRuleState(
+            bundleID: "com.spotify.client",
+            appName: "Spotify",
+            whitelist: [],
+            mode: .allowOnlySelected,
+            blockedApps: [],
+            allowedApps: []
+        )
+        expectEqual(
+            presetOnlySelectedState,
+            .excludedOrBlocked,
+            "preset app is NOT auto-allowed in Only Selected mode"
+        )
+
+        // 4. effectiveAudioRuleState: whitelisted vs non-whitelisted by mode
+        let whitelistedState = AudioAppCatalog.effectiveAudioRuleState(
+            bundleID: "com.apple.Safari",
+            appName: "Safari",
+            whitelist: ["com.apple.Safari"],
+            mode: .allowAllExceptBlocked,
+            blockedApps: ["com.apple.Safari"],
+            allowedApps: []
+        )
+        expectEqual(
+            whitelistedState,
+            .whitelistedAlwaysOn,
+            "whitelisted app resolves to .whitelistedAlwaysOn even if in blockedApps"
+        )
+
+        let allowedInExceptBlocked = AudioAppCatalog.effectiveAudioRuleState(
+            bundleID: "com.spotify.client",
+            appName: "Spotify",
+            whitelist: [],
+            mode: .allowAllExceptBlocked,
+            blockedApps: ["com.apple.Safari"],
+            allowedApps: []
+        )
+        expectEqual(
+            allowedInExceptBlocked,
+            .allowed,
+            "non-blocked app resolves to .allowed in allowAllExceptBlocked mode"
+        )
+
+        let blockedInExceptBlocked = AudioAppCatalog.effectiveAudioRuleState(
+            bundleID: "com.spotify.client",
+            appName: "Spotify",
+            whitelist: [],
+            mode: .allowAllExceptBlocked,
+            blockedApps: ["com.spotify.client"],
+            allowedApps: []
+        )
+        expectEqual(
+            blockedInExceptBlocked,
+            .excludedOrBlocked,
+            "blocked app resolves to .excludedOrBlocked in allowAllExceptBlocked mode"
+        )
+
+        let allowedInOnlySelected = AudioAppCatalog.effectiveAudioRuleState(
+            bundleID: "com.spotify.client",
+            appName: "Spotify",
+            whitelist: [],
+            mode: .allowOnlySelected,
+            blockedApps: [],
+            allowedApps: ["com.spotify.client"]
+        )
+        expectEqual(
+            allowedInOnlySelected,
+            .allowed,
+            "selected app resolves to .allowed in allowOnlySelected mode"
+        )
+
+        // 5. buildAudioRuleEntries: silent browsers excluded unless playing, recent, or explicitly in rules;
+        //    installed non-running presets included with isRunning == false and sorted after running apps (• Playing first)
+        let runningApps: [AppEntry] = [
+            AppEntry(
+                id: "100",
+                pid: 100,
+                name: "Safari",
+                bundleIdentifier: "com.apple.Safari",
+                isPlayingAudio: false,
+                isRunning: true
+            ),
+            AppEntry(
+                id: "101",
+                pid: 101,
+                name: "Google Chrome",
+                bundleIdentifier: "com.google.Chrome",
+                isPlayingAudio: true,
+                isRunning: true
+            ),
+            AppEntry(
+                id: "102",
+                pid: 102,
+                name: "Brave Browser",
+                bundleIdentifier: "com.brave.Browser",
+                isPlayingAudio: false,
+                isRunning: true
+            ),
+            AppEntry(
+                id: "103",
+                pid: 103,
+                name: "Arc",
+                bundleIdentifier: "company.thebrowser.Browser",
+                isPlayingAudio: false,
+                isRunning: true
+            ),
+            AppEntry(
+                id: "104",
+                pid: 104,
+                name: "Music",
+                bundleIdentifier: "com.apple.Music",
+                isPlayingAudio: false,
+                isRunning: true
+            )
+        ]
+
+        let installedPresets = [
+            AudioPresetAppEntry(bundleIdentifier: "com.apple.Music", displayName: "Music"),
+            AudioPresetAppEntry(bundleIdentifier: "com.spotify.client", displayName: "Spotify")
+        ]
+
+        let builtEntries = AudioAppCatalog.buildAudioRuleEntries(
+            runningApps: runningApps,
+            installedPresets: installedPresets,
+            recentlyActiveAudioIDs: ["com.brave.Browser"],
+            mode: .allowAllExceptBlocked,
+            blockedApps: ["company.thebrowser.Browser"],
+            allowedApps: []
+        )
+
+        expectEqual(
+            builtEntries.map { $0.bundleIdentifier ?? "" },
+            [
+                "com.google.Chrome",          // running + playing audio first
+                "company.thebrowser.Browser", // running + in blockedApps (alphabetical: Arc)
+                "com.brave.Browser",          // running + recentlyActiveAudioIDs (Brave Browser)
+                "com.apple.Music",            // running preset (Music)
+                "com.spotify.client"          // non-running installed preset last
+            ],
+            "buildAudioRuleEntries excludes silent Safari, includes playing/recent/explicit browsers, deduplicates running Music, and sorts playing > running > non-running preset"
+        )
+
+        if let spotifyEntry = builtEntries.last {
+            expectEqual(spotifyEntry.isRunning, false, "non-running installed preset has isRunning == false")
+            expectEqual(spotifyEntry.isAudioCatalogPreset, true, "non-running installed preset has isAudioCatalogPreset == true")
+        }
+
+        // 6. AppFreezer.activeRecentlyObservedIdentifiers: < 600s retained, >= 600s expired
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let history: [String: Date] = [
+            "com.apple.Safari": now.addingTimeInterval(-599),
+            "com.google.Chrome": now.addingTimeInterval(-600),
+            "org.mozilla.firefox": now.addingTimeInterval(-900)
+        ]
+        let activeIDs = AppFreezer.activeRecentlyObservedIdentifiers(from: history, now: now, ttl: 600)
+        expectEqual(
+            activeIDs,
+            Set(["com.apple.Safari"]),
+            "activeRecentlyObservedIdentifiers retains entries < 600s and expires entries >= 600s"
+        )
     }
 }

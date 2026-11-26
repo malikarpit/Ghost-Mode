@@ -49,6 +49,7 @@ public final class GhostModeViewModel: ObservableObject {
     @Published public var sessionMode: SessionMode = .idle
     @Published public var snapshot: SystemSnapshot
     @Published public var runningApps: [AppEntry] = []
+    @Published public var audioRuleApps: [AppEntry] = []
     @Published public var selectedTab: PopoverTab = .session
     @Published public var inlineBanner: InlineBanner?
     @Published public var isPopoverVisible: Bool = false
@@ -248,7 +249,7 @@ public final class GhostModeViewModel: ObservableObject {
         let source = preferences.audioFilterMode == .allowAllExceptBlocked
             ? preferences.audioBlockedApps
             : preferences.audioAllowedApps
-        return savedNotRunningEntries(from: source)
+        return savedNotRunningEntries(from: source, excluding: audioRuleApps)
     }
 
     public func removeAudioRuleIdentifier(_ identifier: String) {
@@ -265,8 +266,8 @@ public final class GhostModeViewModel: ObservableObject {
         onFreezePreferenceChanged?()
     }
 
-    private func savedNotRunningEntries(from identifiers: [String]) -> [SavedRuleEntry] {
-        let runningKeys = Set(runningApps.flatMap { entry -> [String] in
+    private func savedNotRunningEntries(from identifiers: [String], excluding extraApps: [AppEntry] = []) -> [SavedRuleEntry] {
+        let runningKeys = Set((runningApps + extraApps).flatMap { entry -> [String] in
             if let bid = entry.bundleIdentifier, !bid.isEmpty {
                 return [bid, entry.name]
             }
@@ -297,6 +298,17 @@ public final class GhostModeViewModel: ObservableObject {
 
     // MARK: - Audio Filter Rules
 
+    public func audioRuleDisplayState(for app: AppEntry) -> AudioRuleDisplayState {
+        AudioAppCatalog.effectiveAudioRuleState(
+            bundleID: app.bundleIdentifier,
+            appName: app.name,
+            whitelist: Set(preferences.appFreezeWhitelist),
+            mode: preferences.audioFilterMode,
+            blockedApps: preferences.audioBlockedApps,
+            allowedApps: preferences.audioAllowedApps
+        )
+    }
+
     public func isAudioAppAllowed(_ app: AppEntry) -> Bool {
         AppFreezer.isAudioAllowed(
             bundleID: app.bundleIdentifier,
@@ -308,6 +320,9 @@ public final class GhostModeViewModel: ObservableObject {
     }
 
     public func toggleAudioApp(_ app: AppEntry) {
+        if isAppFreezeWhitelisted(app) {
+            return
+        }
         let key = app.bundleIdentifier ?? app.name
         switch preferences.audioFilterMode {
         case .allowAllExceptBlocked:

@@ -100,9 +100,9 @@ Ghost Mode automatically sends `SIGCONT` on lid open, stop, quit, crash recovery
 ### An audio app got paused when closing the lid
 
 1. Open **Safety &rarr; Audio App Rules**:
-   - In **Only Selected**, make sure the app (browser or player) is checked.
+   - In **Only Selected**, make sure the app (browser or player) is checked, or add it to **App Whitelist** (whitelisted apps always stay running with audio included).
    - In **All Except Blocked**, make sure it isn't blocked.
-2. Note that some web/Electron players take a second to register a CoreAudio stream when playback starts—open-source WebKit/Chromium renderers map back to their parent browser automatically once audio output is active.
+2. Note that curated music apps appear permanently (with `Not Running` when closed), while browsers and other apps appear once they play audio and remain listed for **10 minutes** after stopping. CoreAudio/WebKit renderers map back to their parent browser automatically once audio output is active.
 
 ---
 

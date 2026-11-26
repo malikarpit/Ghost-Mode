@@ -1019,6 +1019,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func resetDefaults() {
         Preferences.shared.resetToDefaults()
+        AppFreezer.shared.clearObservedAudioHistory()
         NSApp.setActivationPolicy(Preferences.shared.showInDock ? .regular : .accessory)
         handleToggleCountdown()
         if viewModel.sessionMode.isActive {
@@ -1247,7 +1248,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ghostMemMB: Double,
         updatePrefsTelemetry: Bool
     ) {
-        viewModel.runningApps = buildRunningAppEntries(activeAudioPids: activeAudioPids)
+        let runningApps = buildRunningAppEntries(activeAudioPids: activeAudioPids)
+        viewModel.runningApps = runningApps
+        viewModel.audioRuleApps = AudioAppCatalog.buildAudioRuleEntries(
+            runningApps: runningApps,
+            installedPresets: AudioAppCatalog.discoverInstalledPresetAudioApps(),
+            recentlyActiveAudioIDs: AppFreezer.shared.recentlyObservedAudioIdentifiers(),
+            mode: Preferences.shared.audioFilterMode,
+            blockedApps: Preferences.shared.audioBlockedApps,
+            allowedApps: Preferences.shared.audioAllowedApps
+        )
         viewModel.ghostMemMB = ghostMemMB
         if updatePrefsTelemetry {
             viewModel.needsLoginApproval = needsLoginApproval
@@ -1263,8 +1273,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func buildRunningAppEntries(activeAudioPids: Set<pid_t>) -> [AppEntry] {
         let currentPid = getpid()
+        var playingIdentifiers: [String] = []
 
-        return NSWorkspace.shared.runningApplications
+        let entries = NSWorkspace.shared.runningApplications
             .filter { app in
                 app.activationPolicy == .regular &&
                 app.processIdentifier != currentPid &&
@@ -1276,6 +1287,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 let name = app.localizedName ?? "Unknown"
                 let bid = app.bundleIdentifier
                 let isPlaying = AppFreezer.shared.isAppProducingAudio(app, activePids: activeAudioPids)
+                if isPlaying {
+                    if let bid = bid, !bid.isEmpty {
+                        playingIdentifiers.append(bid)
+                    }
+                    if !name.isEmpty {
+                        playingIdentifiers.append(name)
+                    }
+                }
                 let isFrozen = AppFreezer.shared.isAppFrozen(app)
                 let id = "\(bid ?? name)-\(app.processIdentifier)"
                 return AppEntry(
@@ -1288,6 +1307,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     isFrozen: isFrozen
                 )
             }
+
+        if !playingIdentifiers.isEmpty {
+            AppFreezer.shared.recordObservedAudio(identifiers: playingIdentifiers)
+        }
+        return entries
     }
 
     // MARK: - Messaging Helpers

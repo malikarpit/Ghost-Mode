@@ -10,7 +10,7 @@
 
   <p>
     <a href="https://github.com/malikarpit/Ghost-Mode/actions/workflows/ci.yml"><img src="https://github.com/malikarpit/Ghost-Mode/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
-    <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest"><img src="assets/badges/release.svg" alt="Release v2.2.1" /></a>
+    <a href="https://github.com/malikarpit/Ghost-Mode/releases/latest"><img src="assets/badges/release.svg" alt="Release v2.2.2" /></a>
     <img src="assets/badges/macos.svg" alt="macOS 12.0+ Apple Silicon | 14.0+ Intel" />
     <img src="assets/badges/architecture.svg" alt="Universal 2 Binary (arm64 + x86_64)" />
     <img src="assets/badges/dependencies.svg" alt="Zero Dependencies" />
@@ -51,7 +51,7 @@ MacBooks normally force sleep the moment you close the lid unless an external mo
 
 - **Session & Display**: `15m`–`8h` / `∞` presets, `Custom...` duration (`90m`, `1.5h`), live `+15m`–`∞` extensions, **Turn Off Screen**, **Screen Saver**, **Keep Display Awake**, and live lid/battery/thermal telemetry.
 - **Power & Thermal Guards**: **Only Keep Awake on AC Power**, **Low Battery Cutoff** (`5–20%` or custom `1–50%`), and **Thermal Overheat Protection** with live heat status.
-- **Clamshell & App Isolation**: **Turn Off Screen on Lid Close**, **Freeze Apps on Lid Close** (`SIGSTOP`/`SIGCONT`), **App Whitelist (Keep Running)**, and **Keep Music & Audio Streaming** (**Audio App Rules**: *All Except Blocked* / *Only Selected*).
+- **Clamshell & App Isolation**: **Turn Off Screen on Lid Close**, **Freeze Apps on Lid Close** (`SIGSTOP`/`SIGCONT`), **App Whitelist (Keep Running)** (always awake, even when silent), and **Keep Music & Audio Streaming** (**Audio App Rules**: curated `Not Running` media presets, 10m dynamic audio detection, pause-to-freeze on macOS 14+, and locked `Whitelisted` indicators).
 - **System & Diagnostics**: **Show Countdown in Menu Bar**, **Auto-Close Panel on Start**, **Auto-Start at Launch**, **Launch at Login**, **Show App Icon in Dock**, 1-click **Passwordless Sudo**, and live **Ghost Mode Footprint** + **Copy Diagnostics**.
 
 > Full screen-by-screen vector walkthrough of every tab and control: [**USER_GUIDE.md**](USER_GUIDE.md)
@@ -107,7 +107,7 @@ Built to sit at **0% steady CPU** in your menu bar—using event callbacks inste
 git clone https://github.com/malikarpit/Ghost-Mode.git
 cd Ghost-Mode
 
-# Build Universal 2 bundle, run all 237 unit tests & install to /Applications
+# Build Universal 2 bundle, run all 262 unit tests & install to /Applications
 make test && make install
 
 # Optional: package GhostMode-Installer.dmg | clean uninstall

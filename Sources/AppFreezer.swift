@@ -35,6 +35,10 @@ public final class AppFreezer {
     private var monitoredAudioProcessObjects: Set<AudioObjectID> = []
     private var pendingAudioDebounceWorkItem: DispatchWorkItem?
 
+    // 10-minute recently-playing audio history (for transient browsers/audio apps)
+    private let observedAudioLock = NSLock()
+    private var observedAudioLastSeenByIdentifier: [String: Date] = [:]
+
     public var frozenCount: Int {
         frozenRecords.count
     }
@@ -167,6 +171,31 @@ public final class AppFreezer {
         return false
     }
 
+    /// Per-app sandboxed media/GPU/content WebKit XPC helpers live inside `/System/Library/Frameworks/WebKit.framework/`
+    /// (often via Cryptex mounts) while executing exclusively on behalf of an owning browser/app PID.
+    /// Freezing them alongside a targeted non-whitelisted app ensures Safari/WebKit audio stops cleanly.
+    public static func isFreezeableAppOwnedSystemHelperExecutablePath(_ path: String) -> Bool {
+        let normalized = normalizeExecutablePath(path)
+        guard normalized.hasPrefix("/System/Library/Frameworks/WebKit.framework/") else {
+            return false
+        }
+        let fileName = (normalized as NSString).lastPathComponent
+        return fileName == "com.apple.WebKit.GPU" ||
+            fileName == "com.apple.WebKit.WebContent" ||
+            fileName.hasPrefix("com.apple.WebKit.WebContent.")
+    }
+
+    public static func isHelperExecutableEligibleForFreeze(
+        executablePath: String,
+        isOwnedByFreezeTargetApp: Bool
+    ) -> Bool {
+        guard !executablePath.isEmpty else { return false }
+        if !isProtectedSystemExecutablePath(executablePath) {
+            return true
+        }
+        return isOwnedByFreezeTargetApp && isFreezeableAppOwnedSystemHelperExecutablePath(executablePath)
+    }
+
     public static func shouldFreezeApp(
         bundleID: String?,
         appName: String,
@@ -292,11 +321,14 @@ public final class AppFreezer {
         return false
     }
 
-    private func isPid(_ candidatePid: pid_t, ownedByApp app: NSRunningApplication, executablePath: String) -> Bool {
-        let appPid = app.processIdentifier
+    private func isPid(_ candidatePid: pid_t, strictlyOwnedByAppPid appPid: pid_t) -> Bool {
         if candidatePid == appPid { return true }
         if Self.responsiblePid(of: candidatePid) == appPid { return true }
-        if isPid(candidatePid, descendantOf: appPid) { return true }
+        return isPid(candidatePid, descendantOf: appPid)
+    }
+
+    private func isPid(_ candidatePid: pid_t, ownedByApp app: NSRunningApplication, executablePath: String) -> Bool {
+        if isPid(candidatePid, strictlyOwnedByAppPid: app.processIdentifier) { return true }
         if bundlePathMatches(executablePath: executablePath, app: app) { return true }
         return false
     }
@@ -525,8 +557,39 @@ public final class AppFreezer {
         return result
     }
 
+    public static func resolveActiveAudioPids(
+        coreAudioPids: Set<pid_t>,
+        iokitAudioPids: Set<pid_t>,
+        supportsCoreAudioProcessList: Bool
+    ) -> Set<pid_t> {
+        // On macOS 14+, CoreAudio's kAudioProcessPropertyIsRunningOutput drops from 1 to 0
+        // immediately on pause/stop, whereas coreaudiod keeps `output.context.preventuseridlesleep`
+        // lingering in IOKit for tens of seconds afterwards. Prefer CoreAudio directly so paused
+        // audio apps freeze promptly unless explicitly kept in App Whitelist.
+        if supportsCoreAudioProcessList {
+            return coreAudioPids
+        }
+        return iokitAudioPids
+    }
+
     public func getActiveAudioPids() -> Set<pid_t> {
-        var audioPids = Set<pid_t>()
+        if #available(macOS 14.0, *) {
+            let systemObject = AudioObjectID(kAudioObjectSystemObject)
+            var processListAddress = AudioObjectPropertyAddress(
+                mSelector: kAudioHardwarePropertyProcessObjectList,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            if AudioObjectHasProperty(systemObject, &processListAddress) {
+                return Self.resolveActiveAudioPids(
+                    coreAudioPids: getCoreAudioActiveOutputPids(),
+                    iokitAudioPids: [],
+                    supportsCoreAudioProcessList: true
+                )
+            }
+        }
+
+        var iokitPids = Set<pid_t>()
         var assertionsRef: Unmanaged<CFDictionary>?
         if IOPMCopyAssertionsByProcess(&assertionsRef) == kIOReturnSuccess,
            let dict = assertionsRef?.takeRetainedValue() as? [NSNumber: NSArray] {
@@ -545,20 +608,66 @@ public final class AppFreezer {
                         name.localizedCaseInsensitiveContains("airpods") ||
                         name.localizedCaseInsensitiveContains("bluetooth") {
                         if onBehalf > 0 {
-                            audioPids.insert(onBehalf)
+                            iokitPids.insert(onBehalf)
                         } else {
-                            audioPids.insert(pidNum.int32Value)
+                            iokitPids.insert(pidNum.int32Value)
                         }
                     }
                 }
             }
         }
 
-        if #available(macOS 14.0, *) {
-            audioPids.formUnion(getCoreAudioActiveOutputPids())
-        }
+        return Self.resolveActiveAudioPids(
+            coreAudioPids: [],
+            iokitAudioPids: iokitPids,
+            supportsCoreAudioProcessList: false
+        )
+    }
 
-        return audioPids
+    // MARK: - Recently-Playing Audio History
+
+    public static func activeRecentlyObservedIdentifiers(
+        from history: [String: Date],
+        now: Date = Date(),
+        ttl: TimeInterval = 600
+    ) -> Set<String> {
+        var active = Set<String>()
+        for (identifier, seenDate) in history {
+            let age = now.timeIntervalSince(seenDate)
+            if age >= 0 && age < ttl {
+                active.insert(identifier)
+            }
+        }
+        return active
+    }
+
+    public func recordObservedAudio(identifiers: [String], now: Date = Date()) {
+        let nonEmpty = identifiers.filter { !$0.isEmpty }
+        guard !nonEmpty.isEmpty else { return }
+        observedAudioLock.lock()
+        for identifier in nonEmpty {
+            observedAudioLastSeenByIdentifier[identifier] = now
+        }
+        observedAudioLock.unlock()
+    }
+
+    public func recentlyObservedAudioIdentifiers(now: Date = Date()) -> Set<String> {
+        let ttl = AudioAppCatalog.recentlyPlayedRetentionSeconds
+        observedAudioLock.lock()
+        let active = Self.activeRecentlyObservedIdentifiers(
+            from: observedAudioLastSeenByIdentifier,
+            now: now,
+            ttl: ttl
+        )
+        observedAudioLastSeenByIdentifier = observedAudioLastSeenByIdentifier.filter { active.contains($0.key) }
+        observedAudioLock.unlock()
+        return active
+    }
+
+    public func clearObservedAudioHistory() {
+        observedAudioLock.lock()
+        observedAudioLastSeenByIdentifier.removeAll()
+        observedAudioLock.unlock()
     }
 
     public func isAppProducingAudio(_ app: NSRunningApplication, activePids: Set<pid_t>) -> Bool {
@@ -662,6 +771,12 @@ public final class AppFreezer {
 
             let appExecPath = getExecutablePath(of: pid)
             let isProducingAudio = isAppProducingAudio(app, activePids: activeAudioPids)
+            if isProducingAudio {
+                var audioIDs: [String] = []
+                if !bid.isEmpty { audioIDs.append(bid) }
+                if !name.isEmpty { audioIDs.append(name) }
+                recordObservedAudio(identifiers: audioIDs)
+            }
             let shouldFreezeApp = Self.shouldFreezeApp(
                 bundleID: app.bundleIdentifier,
                 appName: name,
@@ -703,12 +818,18 @@ public final class AppFreezer {
             if isProducingAudio {
                 for aPid in activeAudioPids {
                     guard aPid > 100 && aPid != currentPid && !keptAudioPids.contains(aPid) else { continue }
-                    let aExecPath = getExecutablePath(of: aPid)
-                    guard !aExecPath.isEmpty, !Self.isProtectedSystemExecutablePath(aExecPath) else { continue }
                     guard let bsd = Self.readProcessBSDInfo(pid: aPid), bsd.pbi_uid == currentUid else { continue }
-                    if isPid(aPid, ownedByApp: app, executablePath: aExecPath) {
-                        targetFreezeHelperPids.insert(aPid)
+                    let aExecPath = getExecutablePath(of: aPid)
+                    let directlyOwned = isPid(aPid, strictlyOwnedByAppPid: pid)
+                    let ownedByApp = directlyOwned || bundlePathMatches(executablePath: aExecPath, app: app)
+                    guard ownedByApp,
+                          Self.isHelperExecutableEligibleForFreeze(
+                              executablePath: aExecPath,
+                              isOwnedByFreezeTargetApp: directlyOwned
+                          ) else {
+                        continue
                     }
+                    targetFreezeHelperPids.insert(aPid)
                 }
             }
         }
@@ -731,12 +852,18 @@ public final class AppFreezer {
                     continue
                 }
                 let execPath = getExecutablePath(of: helperPid)
-                guard !execPath.isEmpty, !Self.isProtectedSystemExecutablePath(execPath) else { continue }
+                guard !execPath.isEmpty else { continue }
                 if protectedOrKeptApps.contains(where: { isPid(helperPid, ownedByApp: $0, executablePath: execPath) }) {
                     continue
                 }
-                if targetFrozenApps.contains(where: { isPid(helperPid, ownedByApp: $0, executablePath: execPath) }) {
-                    targetFreezeHelperPids.insert(helperPid)
+                if let owner = targetFrozenApps.first(where: { isPid(helperPid, ownedByApp: $0, executablePath: execPath) }) {
+                    let directlyOwned = isPid(helperPid, strictlyOwnedByAppPid: owner.processIdentifier)
+                    if Self.isHelperExecutableEligibleForFreeze(
+                        executablePath: execPath,
+                        isOwnedByFreezeTargetApp: directlyOwned
+                    ) {
+                        targetFreezeHelperPids.insert(helperPid)
+                    }
                 }
             }
         }
@@ -751,7 +878,7 @@ public final class AppFreezer {
                     continue
                 }
                 let execPath = getExecutablePath(of: aPid)
-                guard !execPath.isEmpty, !Self.isProtectedSystemExecutablePath(execPath) else { continue }
+                guard !execPath.isEmpty else { continue }
 
                 if protectedOrKeptApps.contains(where: { isPid(aPid, ownedByApp: $0, executablePath: execPath) }) ||
                     isOwnedByProtectedOrWhitelistedApp(
@@ -760,6 +887,15 @@ public final class AppFreezer {
                         runningApps: allRunningApps,
                         whitelist: whitelist
                     ) {
+                    continue
+                }
+                let directlyOwnedByFrozenTarget = targetFrozenApps.contains {
+                    isPid(aPid, strictlyOwnedByAppPid: $0.processIdentifier)
+                }
+                guard Self.isHelperExecutableEligibleForFreeze(
+                    executablePath: execPath,
+                    isOwnedByFreezeTargetApp: directlyOwnedByFrozenTarget
+                ) else {
                     continue
                 }
                 if !targetFreezeMainPids.contains(aPid) {

@@ -63,6 +63,7 @@ enum SafetyRoute: Equatable {
 final class PopoverUIState: ObservableObject {
     @Published var safetyRoute: SafetyRoute = .root
     @Published var appSearchQuery: String = ""
+    @Published var showAllAppsInAudioRules: Bool = false
     @Published var showCustomDuration: Bool = false
     @Published var customDurationText: String = ""
     @Published var showCustomBattery: Bool = false
@@ -2178,6 +2179,7 @@ private struct SafetyTabView: View {
                 AudioRulesDrillDownView(
                     viewModel: viewModel,
                     preferences: preferences,
+                    uiState: uiState,
                     maxBodyHeight: maxBodyHeight
                 )
             }
@@ -2604,7 +2606,7 @@ private struct AppWhitelistDrillDownView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 8) {
                 HStack(alignment: .center, spacing: 6) {
-                    Text("Checked apps stay running when the lid closes.")
+                    Text("Checked apps always stay running behind a closed lid, even when silent (audio included automatically).")
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
                         .lineLimit(2)
@@ -2724,6 +2726,7 @@ private struct AppWhitelistDrillDownView: View {
 private struct AudioRulesDrillDownView: View {
     @ObservedObject var viewModel: GhostModeViewModel
     @ObservedObject var preferences: Preferences
+    @ObservedObject var uiState: PopoverUIState
     let maxBodyHeight: CGFloat
 
     private var savedNotRunningEntries: [SavedRuleEntry] {
@@ -2737,8 +2740,20 @@ private struct AudioRulesDrillDownView: View {
     }
 
     private var maxChecklistHeight: CGFloat {
-        let baseChrome: CGFloat = viewModel.snapshot.frozenAppCount > 0 ? 156 : 130
+        let baseChrome: CGFloat = viewModel.snapshot.frozenAppCount > 0 ? 184 : 158
         return max(84, maxBodyHeight - baseChrome - savedSectionHeight)
+    }
+
+    private var displayedApps: [AppEntry] {
+        if uiState.showAllAppsInAudioRules {
+            return viewModel.runningApps.sorted { lhs, rhs in
+                if lhs.isPlayingAudio != rhs.isPlayingAudio {
+                    return lhs.isPlayingAudio
+                }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+        }
+        return viewModel.audioRuleApps
     }
 
     var body: some View {
@@ -2770,8 +2785,8 @@ private struct AudioRulesDrillDownView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Text(preferences.audioFilterMode == .allowAllExceptBlocked
-                             ? "Checked apps can continue playing audio behind a closed lid."
-                             : "Only checked apps are allowed to keep playing audio.")
+                             ? "Checked apps stay running only while playing audio. Whitelisted apps always stay running."
+                             : "Only checked apps stay running while playing audio; silent apps freeze on lid close.")
                             .font(.system(size: 11))
                             .foregroundColor(.secondary)
                             .lineLimit(2)
@@ -2796,14 +2811,35 @@ private struct AudioRulesDrillDownView: View {
                     }
 
                     AppChecklistScroll(
-                        apps: viewModel.runningApps,
-                        emptyText: "No user apps running",
+                        apps: displayedApps,
+                        emptyText: uiState.showAllAppsInAudioRules ? "No user apps running" : "No installed music apps or active audio",
                         maxScrollHeight: maxChecklistHeight,
                         isChecked: { viewModel.isAudioAppAllowed($0) },
                         showAudioIndicator: true,
                         showFrozenBadge: true,
+                        isWhitelisted: { viewModel.isAppFreezeWhitelisted($0) },
                         onToggle: { viewModel.toggleAudioApp($0) }
                     )
+
+                    HStack {
+                        Button {
+                            uiState.showAllAppsInAudioRules.toggle()
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: uiState.showAllAppsInAudioRules ? "line.3.horizontal.decrease.circle" : "list.bullet")
+                                    .font(.system(size: 10.5))
+                                Text(uiState.showAllAppsInAudioRules ? "Show audio apps only" : "Show all apps")
+                                    .font(.system(size: 10.5, weight: .medium))
+                            }
+                            .foregroundColor(.accentColor)
+                            .padding(.vertical, 2)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .noFocusRing()
+
+                        Spacer()
+                    }
 
                     if !savedNotRunningEntries.isEmpty {
                         let header = preferences.audioFilterMode == .allowAllExceptBlocked
@@ -2940,6 +2976,7 @@ private struct AppChecklistScroll: View {
     let isChecked: (AppEntry) -> Bool
     let showAudioIndicator: Bool
     var showFrozenBadge: Bool = false
+    var isWhitelisted: ((AppEntry) -> Bool)? = nil
     let onToggle: (AppEntry) -> Void
 
     private var naturalListHeight: CGFloat {
@@ -2995,14 +3032,16 @@ private struct AppChecklistScroll: View {
     private var checklistRows: some View {
         VStack(spacing: 2) {
             ForEach(apps) { app in
-                let checked = isChecked(app)
+                let whitelisted = isWhitelisted?(app) == true
+                let checked = whitelisted || isChecked(app)
                 Button {
+                    guard !whitelisted else { return }
                     onToggle(app)
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: checked ? "checkmark.square.fill" : "square")
                             .font(.system(size: 12.5))
-                            .foregroundColor(checked ? .accentColor : .secondary)
+                            .foregroundColor(whitelisted ? .accentColor.opacity(0.8) : (checked ? .accentColor : .secondary))
 
                         if let icon = app.icon {
                             Image(nsImage: icon)
@@ -3022,6 +3061,28 @@ private struct AppChecklistScroll: View {
                             .lineLimit(1)
 
                         Spacer(minLength: 4)
+
+                        if !app.isRunning {
+                            Text("Not Running")
+                                .font(.system(size: 9.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+
+                        if whitelisted {
+                            HStack(spacing: 3) {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 8.5, weight: .semibold))
+                                Text("Whitelisted")
+                                    .font(.system(size: 10, weight: .semibold))
+                            }
+                            .foregroundColor(.accentColor)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                Capsule()
+                                    .fill(Color.accentColor.opacity(0.14))
+                            )
+                        }
 
                         if showFrozenBadge && app.isFrozen {
                             Text("Frozen")
@@ -3048,10 +3109,12 @@ private struct AppChecklistScroll: View {
                     }
                     .padding(.horizontal, 6)
                     .frame(height: 26)
+                    .opacity(whitelisted ? 0.72 : 1.0)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .noFocusRing()
+                .disabled(whitelisted)
             }
         }
         .padding(4)

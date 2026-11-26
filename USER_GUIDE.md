@@ -1,6 +1,6 @@
 # Ghost Mode User Guide
 
-An annotated, screen-by-screen vector walkthrough of every control, label, indicator, and workflow in **Ghost Mode v2.2.1**.
+An annotated, screen-by-screen vector walkthrough of every control, label, indicator, and workflow in **Ghost Mode v2.2.2**.
 
 ---
 
@@ -52,7 +52,7 @@ When **Show Countdown in Menu Bar** is enabled in **Settings**, the remaining ti
    - **`Turn Off Screen on Lid Close`**: Automatically blanks the built-in display as soon as the MacBook lid shuts *(requires Passwordless Sudo)*.
    - **`Freeze Apps on Lid Close`** (`N kept ›` / `N frozen` / `Configure ›`): Suspends idle GUI apps via `SIGSTOP` when the lid shuts while leaving terminal/CLI tasks, whitelisted apps, and allowed audio apps running *(requires Passwordless Sudo)*.
    - **`AC Power Only`**: Ends keep-awake automatically if your charger disconnects.
-5. **Footer (`v2.2.1 · by Arpit` · `GitHub` · `Report` · `Quit ⌘Q`)**: Opens the GitHub repository, bug report page, or cleanly quits Ghost Mode.
+5. **Footer (`v2.2.2 · by Arpit` · `GitHub` · `Report` · `Quit ⌘Q`)**: Opens the GitHub repository, bug report page, or cleanly quits Ghost Mode.
 
 ---
 
@@ -98,7 +98,7 @@ When **Show Countdown in Menu Bar** is enabled in **Settings**, the remaining ti
 
 1. **Navigation Header (`< Safety` · `App Whitelist` · `N kept`)**: Returns to Safety or shows how many apps are permanently kept awake.
 2. **Batch Controls (`Allow All` · `Clear`) & Live Search (`Filter running apps...`)**: Adds every currently running regular app, clears all rules, or filters by app name / bundle ID.
-3. **App Rows**: Checked apps always stay running when the lid closes. Any previously frozen app that is unchecked can show a `Frozen` badge until resumed, and saved rules for quit apps appear under **`SAVED · NOT CURRENTLY RUNNING`**.
+3. **App Rows**: Checked apps always stay running behind a closed lid, even when silent (audio is included automatically). Any previously frozen app that is unchecked can show a `Frozen` badge until resumed, and saved rules for quit apps appear under **`SAVED · NOT CURRENTLY RUNNING`**.
 
 > **Built-in Protection:** Terminal/CLI tools, AI agents, system daemons, Finder, Dock, WindowManager, CoreAudio, and Ghost Mode itself are never frozen.
 
@@ -113,8 +113,10 @@ When **Show Countdown in Menu Bar** is enabled in **Settings**, the remaining ti
 1. **Navigation Header (`< Safety` · `Audio Rules` · `Reset`)**: Returns to Safety or restores the default audio rule set.
 2. **`FILTER MODE` (`All Except Blocked` · `Only Selected`)**:
    - **`All Except Blocked`**: Any app playing audio stays unfrozen unless you check it to block.
-   - **`Only Selected`**: Only checked apps (for example `Safari` and `Spotify` above) are permitted to stay awake for audio when the lid closes.
-3. **Allowed Audio Apps & Live `Playing` Indicator**: Green live dot shown next to any app currently outputting sound via CoreAudio / IOKit power assertions—including browser media helpers (WebKit/Chromium) mapped back to their parent app.
+   - **`Only Selected`**: Only checked apps are permitted to stay awake for audio when the lid closes (unless already whitelisted in **App Whitelist**).
+3. **Curated Audio List & `Not Running` Presets**: By default, Audio Rules shows installed dedicated music/media apps (such as Apple Music, Podcasts, QuickTime Player, Spotify, VLC, IINA, etc.), any app currently playing audio, and browsers or other apps that played audio within the last **10 minutes**. Installed media apps that are closed appear with a right-aligned **`Not Running`** label so you can pre-configure them anytime (they are not auto-allowed in `Only Selected` mode).
+4. **Active Audio & Locked `Whitelisted` State**: Apps actively outputting sound (`● Playing` green indicator via CoreAudio / WebKit ownership) float cleanly to the top. Allowed audio apps stay unfrozen **only while playing** (and freeze when paused on macOS 14+), whereas apps checked in **App Whitelist** (such as `Spotify` above) appear dimmed with a locked **`Whitelisted`** badge to show they always stay running with audio included.
+5. **`Show all apps` / `Show audio apps only` Toggle**: Use the blue footer toggle below the checklist to expand the list to all currently running apps or return to the focused audio list.
 
 ---
 

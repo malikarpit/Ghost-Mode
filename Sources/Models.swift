@@ -12,7 +12,7 @@ import Foundation
 
 public struct AppMetadata {
     public static let name = "Ghost Mode"
-    public static let version = "2.2.1"
+    public static let version = "2.2.2"
     public static let author = "Arpit"
     public static let copyright = "Copyright © 2026 Arpit. All rights reserved."
     public static let digitalSignature = "Signed by Arpit (com.arpit.GhostMode)"
@@ -103,6 +103,8 @@ public struct AppEntry: Identifiable, Equatable {
     public let icon: NSImage?
     public let isPlayingAudio: Bool
     public let isFrozen: Bool
+    public let isRunning: Bool
+    public let isAudioCatalogPreset: Bool
 
     public init(
         id: String,
@@ -111,7 +113,9 @@ public struct AppEntry: Identifiable, Equatable {
         bundleIdentifier: String?,
         icon: NSImage? = nil,
         isPlayingAudio: Bool = false,
-        isFrozen: Bool = false
+        isFrozen: Bool = false,
+        isRunning: Bool = true,
+        isAudioCatalogPreset: Bool = false
     ) {
         self.id = id
         self.pid = pid
@@ -120,6 +124,8 @@ public struct AppEntry: Identifiable, Equatable {
         self.icon = icon
         self.isPlayingAudio = isPlayingAudio
         self.isFrozen = isFrozen
+        self.isRunning = isRunning
+        self.isAudioCatalogPreset = isAudioCatalogPreset
     }
 
     public static func == (lhs: AppEntry, rhs: AppEntry) -> Bool {
@@ -128,7 +134,213 @@ public struct AppEntry: Identifiable, Equatable {
             lhs.name == rhs.name &&
             lhs.bundleIdentifier == rhs.bundleIdentifier &&
             lhs.isPlayingAudio == rhs.isPlayingAudio &&
-            lhs.isFrozen == rhs.isFrozen
+            lhs.isFrozen == rhs.isFrozen &&
+            lhs.isRunning == rhs.isRunning &&
+            lhs.isAudioCatalogPreset == rhs.isAudioCatalogPreset
+    }
+}
+
+public enum AudioRuleDisplayState: Equatable {
+    case whitelistedAlwaysOn
+    case allowed
+    case excludedOrBlocked
+}
+
+public struct AudioPresetAppEntry: Equatable {
+    public let bundleIdentifier: String
+    public let displayName: String
+    public let icon: NSImage?
+
+    public init(bundleIdentifier: String, displayName: String, icon: NSImage? = nil) {
+        self.bundleIdentifier = bundleIdentifier
+        self.displayName = displayName
+        self.icon = icon
+    }
+
+    public static func == (lhs: AudioPresetAppEntry, rhs: AudioPresetAppEntry) -> Bool {
+        lhs.bundleIdentifier == rhs.bundleIdentifier &&
+            lhs.displayName == rhs.displayName
+    }
+}
+
+public enum AudioAppCatalog {
+    public static let recentlyPlayedRetentionSeconds: TimeInterval = 600
+
+    public static let presetDedicatedAudioBundleIDs: [String] = [
+        "com.spotify.client",
+        "com.apple.Music",
+        "com.apple.podcasts",
+        "com.apple.QuickTimePlayerX",
+        "org.videolan.vlc",
+        "com.colliderli.iina",
+        "com.tidal.desktop",
+        "com.amazon.music",
+        "com.coppertino.Vox",
+        "com.brushedtype.doppler-macos",
+        "com.swinsian.Swinsian",
+        "fm.overcast.Overcast",
+        "com.deezer.deezer-desktop",
+        "com.qobuz.desktop"
+    ]
+
+    private static let presetDedicatedAudioBundleIDSet = Set(presetDedicatedAudioBundleIDs)
+
+    public static func isPresetDedicatedAudioApp(bundleIdentifier: String?) -> Bool {
+        guard let bundleIdentifier, !bundleIdentifier.isEmpty else {
+            return false
+        }
+        return presetDedicatedAudioBundleIDSet.contains(bundleIdentifier)
+    }
+
+    public static func discoverInstalledPresetAudioApps(
+        resolveApp: ((String) -> (displayName: String, icon: NSImage?)?)? = nil
+    ) -> [AudioPresetAppEntry] {
+        let resolver: (String) -> (displayName: String, icon: NSImage?)? = resolveApp ?? { bundleID in
+            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleID) else {
+                return nil
+            }
+            let bundle = Bundle(url: appURL)
+            let rawDisplayName = (bundle?.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let rawBundleName = (bundle?.object(forInfoDictionaryKey: "CFBundleName") as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let displayName: String
+            if let rawDisplayName, !rawDisplayName.isEmpty {
+                displayName = rawDisplayName
+            } else if let rawBundleName, !rawBundleName.isEmpty {
+                displayName = rawBundleName
+            } else {
+                displayName = appURL.deletingPathExtension().lastPathComponent
+            }
+            let icon = NSWorkspace.shared.icon(forFile: appURL.path)
+            return (displayName: displayName, icon: icon)
+        }
+
+        var entries: [AudioPresetAppEntry] = []
+        for bundleID in presetDedicatedAudioBundleIDs {
+            if let resolved = resolver(bundleID) {
+                entries.append(
+                    AudioPresetAppEntry(
+                        bundleIdentifier: bundleID,
+                        displayName: resolved.displayName,
+                        icon: resolved.icon
+                    )
+                )
+            }
+        }
+
+        return entries.sorted { lhs, rhs in
+            let order = lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName)
+            if order != .orderedSame {
+                return order == .orderedAscending
+            }
+            return lhs.bundleIdentifier < rhs.bundleIdentifier
+        }
+    }
+
+    public static func effectiveAudioRuleState(
+        bundleID: String?,
+        appName: String,
+        whitelist: Set<String>,
+        mode: AudioFilterMode,
+        blockedApps: [String],
+        allowedApps: [String]
+    ) -> AudioRuleDisplayState {
+        var identifiers: [String] = []
+        if let bundleID, !bundleID.isEmpty {
+            identifiers.append(bundleID)
+        }
+        if !appName.isEmpty {
+            identifiers.append(appName)
+        }
+
+        if identifiers.contains(where: { whitelist.contains($0) }) {
+            return .whitelistedAlwaysOn
+        }
+
+        let isAllowed: Bool
+        switch mode {
+        case .allowAllExceptBlocked:
+            let blocked = Set(blockedApps)
+            isAllowed = !identifiers.contains(where: { blocked.contains($0) })
+        case .allowOnlySelected:
+            let allowed = Set(allowedApps)
+            isAllowed = !allowed.isEmpty && identifiers.contains(where: { allowed.contains($0) })
+        }
+        return isAllowed ? .allowed : .excludedOrBlocked
+    }
+
+    public static func buildAudioRuleEntries(
+        runningApps: [AppEntry],
+        installedPresets: [AudioPresetAppEntry],
+        recentlyActiveAudioIDs: Set<String>,
+        mode: AudioFilterMode,
+        blockedApps: [String],
+        allowedApps: [String]
+    ) -> [AppEntry] {
+        _ = mode
+        let explicitRuleIDs = Set(blockedApps).union(allowedApps)
+        var entries: [AppEntry] = []
+        var runningBundleIDs = Set<String>()
+
+        for app in runningApps {
+            if let bid = app.bundleIdentifier, !bid.isEmpty {
+                runningBundleIDs.insert(bid)
+            }
+
+            var identifiers: [String] = []
+            if let bid = app.bundleIdentifier, !bid.isEmpty {
+                identifiers.append(bid)
+            }
+            if !app.name.isEmpty {
+                identifiers.append(app.name)
+            }
+
+            let isIncluded = app.isPlayingAudio ||
+                isPresetDedicatedAudioApp(bundleIdentifier: app.bundleIdentifier) ||
+                identifiers.contains(where: { recentlyActiveAudioIDs.contains($0) }) ||
+                identifiers.contains(where: { explicitRuleIDs.contains($0) })
+
+            if isIncluded {
+                entries.append(app)
+            }
+        }
+
+        var seenPresetBundleIDs = Set<String>()
+        for preset in installedPresets {
+            guard !runningBundleIDs.contains(preset.bundleIdentifier),
+                  !seenPresetBundleIDs.contains(preset.bundleIdentifier) else {
+                continue
+            }
+            seenPresetBundleIDs.insert(preset.bundleIdentifier)
+            entries.append(
+                AppEntry(
+                    id: "preset-\(preset.bundleIdentifier)",
+                    pid: 0,
+                    name: preset.displayName,
+                    bundleIdentifier: preset.bundleIdentifier,
+                    icon: preset.icon,
+                    isPlayingAudio: false,
+                    isFrozen: false,
+                    isRunning: false,
+                    isAudioCatalogPreset: true
+                )
+            )
+        }
+
+        return entries.sorted { lhs, rhs in
+            if lhs.isPlayingAudio != rhs.isPlayingAudio {
+                return lhs.isPlayingAudio && !rhs.isPlayingAudio
+            }
+            if lhs.isRunning != rhs.isRunning {
+                return lhs.isRunning && !rhs.isRunning
+            }
+            let nameOrder = lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+            if nameOrder != .orderedSame {
+                return nameOrder == .orderedAscending
+            }
+            return lhs.id < rhs.id
+        }
     }
 }
 
